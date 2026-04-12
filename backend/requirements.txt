@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+opencv-python
+numpy
+pytesseract
+tensorflow-cpu
+python-multipart
+fuzzywuzzy
+python-Levenshtein
