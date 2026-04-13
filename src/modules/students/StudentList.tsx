@@ -1,306 +1,259 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  getPaginationRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  type SortingState
-} from '@tanstack/react-table';
-import { mockStudents } from '../../mock-data';
-import { Search, ChevronDown, MoreVertical, Plus, Filter, CheckCircle, FileText } from 'lucide-react';
-import Modal from '../../components/common/Modal';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+  ArrowLeft,
+  Baby,
+  BookOpen,
+  Building2,
+  ChevronRight,
+  GraduationCap,
+  MapPin,
+  Phone,
+  Shield,
+  User,
+  Users,
+} from 'lucide-react';
+import { useClassStore } from '../../store/useClassStore';
+import type { IClassCategory, ISection, IStudent } from '../../store/useClassStore';
 
-const columnHelper = createColumnHelper<typeof mockStudents[0]>();
+type DirectoryView = 'categories' | 'sections' | 'students';
 
-const columns = [
-  columnHelper.accessor('name', {
-    header: 'Student Name',
-    cell: info => (
-      <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm shrink-0">
-          {info.getValue().charAt(0)}
-        </div>
-        <div>
-          <span className="font-semibold text-slate-900 block">{info.getValue()}</span>
-          <span className="text-xs text-slate-500">{info.row.original.email}</span>
-        </div>
-      </div>
-    ),
-  }),
-  columnHelper.accessor('standard', {
-    header: 'Standard',
-    cell: info => <span className="font-medium text-slate-700">{info.getValue()}</span>,
-  }),
-  columnHelper.accessor('class', {
-    header: 'Class',
-    cell: info => <span className="text-slate-600">{info.getValue()}</span>,
-  }),
-  columnHelper.accessor('status', {
-    header: 'Status',
-    cell: info => (
-      <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${info.getValue() === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'
-        }`}>
-        {info.getValue()}
-      </span>
-    ),
-  }),
-  columnHelper.accessor('attendance', {
-    header: 'Attendance %',
-    cell: info => {
-      const val = info.getValue() as number;
-      return (
-        <div className="flex items-center gap-2">
-          <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div className={`h-full ${val >= 90 ? 'bg-emerald-500' : val >= 75 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${val}%` }} />
-          </div>
-          <span className="text-sm font-medium text-slate-700">{val}%</span>
-        </div>
-      );
-    },
-  }),
-  columnHelper.display({
-    id: 'actions',
-    cell: () => (
-      <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors">
-        <MoreVertical size={16} />
-      </button>
-    )
-  })
-];
+const iconMap = {
+  Baby,
+  BookOpen,
+  GraduationCap,
+  Building2,
+} as const;
+
+const categoryMeta: Record<string, { subtitle: string; standards: string }> = {
+  kindergarten: { subtitle: 'LKG / UKG', standards: 'LKG-UKG' },
+  primary: { subtitle: 'Standards 1 to 5', standards: '1-5' },
+  secondary: { subtitle: 'Standards 6 to 10', standards: '6-10' },
+  'higher-secondary': { subtitle: 'Standards 11 to 12', standards: '11-12' },
+};
 
 const StudentList = () => {
-  const [data, setData] = useState(() => [...mockStudents]);
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [globalFilter, setGlobalFilter] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [notification, setNotification] = useState<string | null>(null);
+  const { categories, sections, students, inCharges } = useClassStore();
+  const [view, setView] = useState<DirectoryView>('categories');
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
 
-  const table = useReactTable({
-    data,
-    columns,
-    state: {
-      sorting,
-      globalFilter,
-    },
-    onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-  });
+  const activeCategory = categories.find((category) => category.id === activeCategoryId) ?? null;
+  const activeSection = sections.find((section) => section.id === activeSectionId) ?? null;
 
-  const exportToPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text('Student Directory - EduSync ERP', 14, 15);
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 22);
+  const visibleSections = useMemo(
+    () => sections.filter((section) => section.categoryId === activeCategoryId),
+    [sections, activeCategoryId]
+  );
 
-    const tableData = data.map(s => [s.id, s.name, s.email, s.standard, s.class, s.status, `${s.attendance}%`]);
-    autoTable(doc, {
-      head: [['ID', 'Name', 'Email', 'Std', 'Class', 'Status', 'Atten.']],
-      body: tableData,
-      startY: 28,
-      theme: 'striped',
-      headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
-      styles: { fontSize: 8 },
-      alternateRowStyles: { fillColor: [249, 250, 251] }
-    });
+  const visibleStudents = useMemo(
+    () => students.filter((student) => student.sectionId === activeSectionId),
+    [students, activeSectionId]
+  );
 
-    doc.save('student_directory.pdf');
-    setNotification('PDF report generated and downloaded!');
-    setTimeout(() => setNotification(null), 3000);
+  const openCategory = (categoryId: string) => {
+    setActiveCategoryId(categoryId);
+    setActiveSectionId(null);
+    setView('sections');
   };
 
-  const handleAddStudent = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const newStudent = {
-      id: `s${data.length + 1}`,
-      name: formData.get('name') as string,
-      email: formData.get('email') as string,
-      standard: formData.get('standard') as string,
-      class: formData.get('class') as string,
-      section: (formData.get('class') as string).split('-')[1] || 'A',
-      status: 'Active',
-      attendance: 100,
-      gender: 'Other',
-      dob: '2010-01-01',
-      rollNo: `${data.length + 101}`,
-      bloodGroup: 'O+'
-    };
-    setData([newStudent, ...data]);
-    setIsModalOpen(false);
-    setNotification(`${newStudent.name} has been enrolled successfully!`);
-    setTimeout(() => setNotification(null), 3000);
+  const openSection = (sectionId: string) => {
+    setActiveSectionId(sectionId);
+    setView('students');
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Students Directory</h1>
-          <p className="text-slate-500 mt-1">Manage and view all enrolled students across the institution.</p>
-        </div>
-        <div className="flex items-center gap-3">
+  const goBack = () => {
+    if (view === 'students') {
+      setActiveSectionId(null);
+      setView('sections');
+      return;
+    }
+
+    setActiveCategoryId(null);
+    setView('categories');
+  };
+
+  const renderCategoryCards = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+      {categories.map((category: IClassCategory) => {
+        const Icon = iconMap[category.icon as keyof typeof iconMap] ?? BookOpen;
+        const categorySections = sections.filter((section) => section.categoryId === category.id);
+        const categoryStudents = students.filter((student) => student.categoryId === category.id);
+
+        return (
           <button
-            onClick={exportToPDF}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm text-sm"
+            key={category.id}
+            onClick={() => openCategory(category.id)}
+            className="text-left bg-white rounded-[2rem] border border-slate-100 p-7 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group"
           >
-            <FileText size={16} className="text-indigo-600" /> Export PDF
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-6 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <Icon size={26} />
+            </div>
+            <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">
+              {categoryMeta[category.id]?.standards || category.name}
+            </p>
+            <h2 className="mt-2 text-2xl font-black text-slate-900">{category.name}</h2>
+            <p className="mt-2 text-sm text-slate-500">{categoryMeta[category.id]?.subtitle || category.description}</p>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Sections</p>
+                <p className="mt-1 text-2xl font-black text-slate-900">{categorySections.length}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Students</p>
+                <p className="mt-1 text-2xl font-black text-slate-900">{categoryStudents.length}</p>
+              </div>
+            </div>
+            <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
+              <span className="text-xs font-bold text-slate-500">Open Sections</span>
+              <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
+            </div>
           </button>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors shadow-sm text-sm"
-          >
-            <Plus size={16} /> Add Student
-          </button>
-        </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderSectionCards = () => (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {visibleSections.map((section: ISection) => {
+          const studentCount = students.filter((student) => student.sectionId === section.id).length;
+
+          return (
+            <button
+              key={section.id}
+              onClick={() => openSection(section.id)}
+              className="text-left bg-white rounded-[2rem] border border-slate-100 p-7 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black text-xl group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                  {section.name}
+                </div>
+                <ChevronRight size={18} className="text-slate-300 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all" />
+              </div>
+              <h2 className="mt-6 text-2xl font-black text-slate-900">Section {section.name}</h2>
+              <p className="mt-2 text-sm text-slate-500">Click to view enrolled students.</p>
+              <div className="mt-6 space-y-3">
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <Shield size={14} className="text-emerald-500" />
+                  <span className="font-semibold">{section.classTeacher}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <MapPin size={14} className="text-slate-400" />
+                  <span>{section.roomNumber || 'Room TBD'}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <Users size={14} className="text-slate-400" />
+                  <span>{studentCount} students</span>
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      {notification && (
-        <div className="fixed top-20 right-6 z-50 animate-in slide-in-from-right fade-in duration-300">
-          <div className="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-xl flex items-center gap-3 border border-slate-800">
-            <CheckCircle size={20} className="text-emerald-400" />
-            <p className="font-semibold text-sm">{notification}</p>
+      {!!activeCategory && (
+        <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
+          <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Section Leads</p>
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {(inCharges[activeCategory.id] || []).map((lead, index) => (
+              <div key={`${lead.name}-${index}`} className="rounded-2xl bg-slate-50 p-5">
+                <p className="text-xs font-black uppercase tracking-wider text-emerald-600">{lead.role}</p>
+                <h3 className="mt-2 text-lg font-bold text-slate-900">{lead.name}</h3>
+                <p className="mt-1 text-sm text-slate-500">{lead.experience || lead.exp}</p>
+                <p className="mt-1 text-sm text-slate-500">{lead.contact}</p>
+              </div>
+            ))}
           </div>
         </div>
       )}
+    </div>
+  );
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        {/* Table Toolbar */}
-        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="relative w-full sm:w-80">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={globalFilter ?? ''}
-              onChange={e => setGlobalFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-transparent focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-200 rounded-xl text-sm transition-all outline-none"
-              placeholder="Search students..."
-            />
+  const renderStudentCards = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      {visibleStudents.map((student: IStudent) => (
+        <div key={student.id} className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm hover:shadow-lg transition-shadow">
+          <div className="flex items-start justify-between gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center font-black text-lg">
+              {student.rollNo}
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-600">
+              {student.gender}
+            </span>
           </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-sm font-medium transition-colors">
-              <Filter size={16} /> Filter
-            </button>
-          </div>
-        </div>
-
-        {/* Table Content */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-slate-50/80 uppercase text-slate-500 text-xs font-semibold">
-              {table.getHeaderGroups().map(headerGroup => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map(header => (
-                    <th key={header.id} className="px-6 py-4 border-b border-slate-100 tracking-wider">
-                      {header.isPlaceholder ? null : (
-                        <div
-                          className={`flex items-center gap-2 ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-slate-700' : ''}`}
-                          onClick={header.column.getToggleSortingHandler()}
-                        >
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          {header.column.getCanSort() && (
-                            <ChevronDown size={14} className={`transition-transform ${header.column.getIsSorted() === 'asc' ? 'rotate-180 text-indigo-500' : header.column.getIsSorted() === 'desc' ? 'text-indigo-500' : 'text-slate-300'}`} />
-                          )}
-                        </div>
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {table.getRowModel().rows.length ? (
-                table.getRowModel().rows.map(row => (
-                  <tr key={row.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50 last:border-0 group">
-                    {row.getVisibleCells().map(cell => (
-                      <td key={cell.id} className="px-6 py-4">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={columns.length} className="px-6 py-12 text-center text-slate-500 font-medium">
-                    No students found based on the search query.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination Details */}
-        <div className="p-4 border-t border-slate-100 flex items-center justify-between text-sm bg-slate-50/30">
-          <span className="text-slate-500 font-medium">
-            Showing {table.getRowModel().rows.length} of {data.length} results
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 font-medium text-slate-600 transition-colors shadow-sm"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 font-medium text-slate-600 transition-colors shadow-sm"
-            >
-              Next
-            </button>
+          <h2 className="mt-5 text-xl font-black text-slate-900">{student.name}</h2>
+          <div className="mt-5 space-y-3 text-sm text-slate-600">
+            <div className="flex items-center gap-2">
+              <User size={14} className="text-indigo-500" />
+              <span>Parent: {student.parentName}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Phone size={14} className="text-indigo-500" />
+              <span>{student.contact}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MapPin size={14} className="text-indigo-500" />
+              <span>{student.address}</span>
+            </div>
           </div>
         </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Student Directory</h1>
+          <p className="text-slate-500 mt-1">
+            Browse students by academic stage, then drill into sections and enrolled learners.
+          </p>
+        </div>
+
+        {view !== 'categories' && (
+          <button
+            onClick={goBack}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+          >
+            <ArrowLeft size={16} />
+            {view === 'students' ? 'Back To Sections' : 'Back To Categories'}
+          </button>
+        )}
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Enroll New Student">
-        <form onSubmit={handleAddStudent} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Full Name</label>
-              <input name="name" required className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm transition-all" placeholder="Enter full name" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Email Address</label>
-              <input name="email" type="email" required className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm transition-all" placeholder="email@school.edu" />
-            </div>
+      {view === 'categories' && renderCategoryCards()}
+
+      {view === 'sections' && activeCategory && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
+            <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">
+              {categoryMeta[activeCategory.id]?.standards || activeCategory.name}
+            </p>
+            <h2 className="mt-2 text-3xl font-black text-slate-900">{activeCategory.name}</h2>
+            <p className="mt-2 text-slate-500">{activeCategory.description}</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Standard</label>
-              <select name="standard" required className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm transition-all">
-                <option value="10th">10th Standard</option>
-                <option value="9th">9th Standard</option>
-                <option value="8th">8th Standard</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Class Assigned</label>
-              <select name="class" required className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm transition-all">
-                <option value="10-A">10-A</option>
-                <option value="10-B">10-B</option>
-                <option value="9-A">9-A</option>
-                <option value="9-B">9-B</option>
-              </select>
-            </div>
+          {renderSectionCards()}
+        </div>
+      )}
+
+      {view === 'students' && activeCategory && activeSection && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
+            <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">
+              {activeCategory.name}
+            </p>
+            <h2 className="mt-2 text-3xl font-black text-slate-900">Section {activeSection.name}</h2>
+            <p className="mt-2 text-slate-500">
+              {activeSection.classTeacher} • {visibleStudents.length} students • {activeSection.roomNumber || 'Room TBD'}
+            </p>
           </div>
-          <div className="pt-4 flex gap-3">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors">Cancel</button>
-            <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-colors">Enroll Student</button>
-          </div>
-        </form>
-      </Modal>
+          {renderStudentCards()}
+        </div>
+      )}
     </div>
   );
 };
+
 export default StudentList;

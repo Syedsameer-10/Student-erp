@@ -64,8 +64,8 @@ const AttendanceDashboard = () => {
            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
               <div className="p-4 bg-blue-500 text-white rounded-xl shadow-lg"><GraduationCap size={24} /></div>
               <div>
-                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Target %</p>
-                 <p className="text-2xl font-bold text-slate-900">85% Required</p>
+                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Monthly Average</p>
+                 <p className="text-2xl font-bold text-slate-900">94.2%</p>
               </div>
            </div>
         </div>

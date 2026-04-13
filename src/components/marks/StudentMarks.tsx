@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { useMarksStore } from '../../store/useMarksStore';
+import { EXAM_TYPES, useMarksStore } from '../../store/useMarksStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { TrendingUp, BookOpen, Award, BarChart3, ChevronRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import type { ExamType } from '../../store/useMarksStore';
 
 const StudentMarks = () => {
   const { user } = useAuthStore();
   const { marks } = useMarksStore();
-  const [selectedExam, setSelectedExam] = useState<string>('Semester');
+  const [selectedExam, setSelectedExam] = useState<ExamType>('Unit Test');
 
   const myMarks = marks.filter(m => m.studentId === user?.id);
   const examMarks = myMarks.filter(m => m.examType === selectedExam);
@@ -27,7 +28,7 @@ const StudentMarks = () => {
         </div>
         
         <div className="flex bg-white border border-slate-200 rounded-2xl p-1 shadow-sm">
-          {['Internal', 'Semester', 'Assignment'].map(type => (
+          {EXAM_TYPES.map(type => (
             <button 
               key={type}
               onClick={() => setSelectedExam(type)}

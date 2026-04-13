@@ -53,6 +53,7 @@ function App() {
           <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['Admin']}><AdminDashboard /></ProtectedRoute>} />
           <Route path="/teacher/dashboard" element={<ProtectedRoute allowedRoles={['Teacher']}><TeacherDashboard /></ProtectedRoute>} />
           <Route path="/student/dashboard" element={<ProtectedRoute allowedRoles={['Student']}><StudentDashboard /></ProtectedRoute>} />
+          <Route path="/accountant/dashboard" element={<Navigate to="/accountant/fees" replace />} />
           <Route path="/governing/dashboard" element={<ProtectedRoute allowedRoles={['Governing Body']}><GoverningDashboard /></ProtectedRoute>} />
           {/* --- Admin Routes --- */}
           <Route path="/admin/classes" element={<ProtectedRoute allowedRoles={['Admin']}><ClassesDashboard /></ProtectedRoute>} />
@@ -87,6 +88,9 @@ function App() {
           <Route path="/student/events" element={<ProtectedRoute allowedRoles={['Student']}><EventDashboard /></ProtectedRoute>} />
           <Route path="/student/calendar" element={<ProtectedRoute allowedRoles={['Student']}><div className="p-8"><Calendar /></div></ProtectedRoute>} />
           <Route path="/student/leave" element={<ProtectedRoute allowedRoles={['Student']}><div className="p-8"><LeaveRequestForm /></div></ProtectedRoute>} />
+
+          {/* --- Accountant Routes --- */}
+          <Route path="/accountant/fees" element={<ProtectedRoute allowedRoles={['Accountant']}><FinanceDashboard /></ProtectedRoute>} />
 
           {/* --- Governing Body Routes --- */}
           <Route path="/governing/dashboard" element={<ProtectedRoute allowedRoles={['Governing Body']}><div className="p-8"><GoverningDashboard /></div></ProtectedRoute>} />

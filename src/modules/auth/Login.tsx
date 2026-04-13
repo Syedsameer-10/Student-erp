@@ -43,6 +43,8 @@ const LoginModule = () => {
             navigate('/teacher/dashboard'); break;
           case 'Student':
             navigate('/student/dashboard'); break;
+          case 'Accountant':
+            navigate('/accountant/fees'); break;
           case 'Governing Body':
             navigate('/governing/dashboard'); break;
           default:
@@ -141,7 +143,7 @@ const LoginModule = () => {
       <div className="mt-6 border-t border-slate-100 pt-6">
         <p className="text-xs text-slate-500 text-center uppercase tracking-wider font-semibold mb-3">Mock Credentials</p>
         <div className="flex flex-wrap justify-center gap-2">
-          {['admin', 'teacher', 'student', 'governing'].map(role => (
+          {['admin', 'teacher', 'student', 'accountant', 'governing'].map(role => (
             <span key={role} className="inline-flex items-center px-2 py-1 rounded-md bg-slate-100 text-slate-600 text-xs font-mono">
               {role}@school.edu
             </span>

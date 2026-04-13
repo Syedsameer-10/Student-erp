@@ -1,6 +1,7 @@
 export const mockUsers = [
   { id: "u1", name: "Admin User", email: "admin@school.edu", password: "password", role: "Admin" },
   { id: "u2", name: "Dr. Robert Wilson", email: "governing@school.edu", password: "password", role: "Governing Body" },
+  { id: "u3", name: "Ms. Kavitha Rao", email: "accountant@school.edu", password: "password", role: "Accountant" },
   // Teachers
   { id: "t1", name: "Mr. Rajesh Kumar", email: "teacher@school.edu", password: "password", role: "Teacher", subject: "Mathematics", standards: ["10-A", "10-B"], classes: ["10-A", "10-B"] },
   { id: "t2", name: "Ms. Anjali Mehta", email: "anjali@school.edu", password: "password", role: "Teacher", subject: "Science", standards: ["10-A", "9-A"], classes: ["10-A", "9-A"] },

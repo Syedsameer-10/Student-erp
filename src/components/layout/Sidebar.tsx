@@ -14,9 +14,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 const getNavItems = (role: string) => {
-  const items = [
-    { name: 'Dashboard', icon: LayoutDashboard, path: `/${role === 'Governing Body' ? 'governing' : role.toLowerCase()}/dashboard` },
-  ];
+  const items = role === 'Accountant'
+    ? []
+    : [
+        { name: 'Dashboard', icon: LayoutDashboard, path: `/${role === 'Governing Body' ? 'governing' : role.toLowerCase()}/dashboard` },
+      ];
 
   if (role === 'Admin') {
     items.push(
@@ -53,6 +55,12 @@ const getNavItems = (role: string) => {
       { name: 'Calendar', icon: Calendar, path: '/student/calendar' },
       { name: 'Assignments', icon: FileText, path: '/student/assignments' },
       { name: 'Fees', icon: DollarSign, path: '/student/fees' }
+    );
+  }
+
+  if (role === 'Accountant') {
+    items.push(
+      { name: 'Fees & Finance', icon: DollarSign, path: '/accountant/fees' }
     );
   }
 

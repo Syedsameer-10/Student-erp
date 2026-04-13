@@ -1,21 +1,88 @@
-import { useState } from 'react';
-import { DollarSign, Activity, Plus, CheckCircle, Download, CreditCard, Clock } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Building2, DollarSign, Activity, Plus, CheckCircle, Download, CreditCard, Clock, Baby, BookOpen, GraduationCap, ChevronRight, MapPin, Shield, User } from 'lucide-react';
 import { mockFees } from '../../mock-data';
 import { useAuthStore } from '../../store/useAuthStore';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { fetchLevels, fetchClasses, fetchSections, fetchStudents } from './financeApi';
+import type { FinanceLevel, FinanceClass, FinanceSection, FinanceStudent } from './financeApi';
+
+type AccountantView = 'levels' | 'classes' | 'sections' | 'students';
+
+const levelIconMap = {
+  Kindergarten: Baby,
+  Primary: BookOpen,
+  Secondary: GraduationCap,
+  'Higher Secondary': Building2,
+} as const;
 
 const FinanceDashboard = () => {
   const { user } = useAuthStore();
   const [notification, setNotification] = useState<string | null>(null);
+  const [accountantView, setAccountantView] = useState<AccountantView>('levels');
+  const [levels, setLevels] = useState<FinanceLevel[]>([]);
+  const [classes, setClasses] = useState<FinanceClass[]>([]);
+  const [sections, setSections] = useState<FinanceSection[]>([]);
+  const [students, setStudents] = useState<FinanceStudent[]>([]);
+  const [activeLevel, setActiveLevel] = useState<FinanceLevel | null>(null);
+  const [activeClass, setActiveClass] = useState<FinanceClass | null>(null);
+  const [activeSection, setActiveSection] = useState<FinanceSection | null>(null);
 
   const displayFees = user?.role === 'Student' 
     ? mockFees.filter(f => f.studentEmail === user.email)
     : mockFees;
+  const isAccountant = user?.role === 'Accountant';
+
+  useEffect(() => {
+    if (!isAccountant) return;
+
+    fetchLevels().then(setLevels);
+  }, [isAccountant]);
 
   const handleCollectFee = () => {
     setNotification('Successfully collected fee for invoice #INV-7281');
     setTimeout(() => setNotification(null), 3000);
+  };
+
+  const openLevel = async (level: FinanceLevel) => {
+    setActiveLevel(level);
+    setActiveClass(null);
+    setActiveSection(null);
+    setClasses(await fetchClasses(level.id));
+    setAccountantView('classes');
+  };
+
+  const openClass = async (financeClass: FinanceClass) => {
+    setActiveClass(financeClass);
+    setActiveSection(null);
+    setSections(await fetchSections(financeClass.id));
+    setAccountantView('sections');
+  };
+
+  const openSection = async (section: FinanceSection) => {
+    setActiveSection(section);
+    setStudents(await fetchStudents(section.id));
+    setAccountantView('students');
+  };
+
+  const handleBack = () => {
+    if (accountantView === 'students') {
+      setActiveSection(null);
+      setStudents([]);
+      setAccountantView('sections');
+      return;
+    }
+
+    if (accountantView === 'sections') {
+      setActiveClass(null);
+      setSections([]);
+      setAccountantView('classes');
+      return;
+    }
+
+    setActiveLevel(null);
+    setClasses([]);
+    setAccountantView('levels');
   };
 
   const handleDownloadBill = (fee: any) => {
@@ -62,6 +129,165 @@ const FinanceDashboard = () => {
     setNotification('Bill downloaded successfully!');
     setTimeout(() => setNotification(null), 3000);
   };
+
+  if (isAccountant) {
+    return (
+      <div className="space-y-6 lg:pb-12 h-full">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Accountant Fee Registry</h1>
+            <p className="text-slate-500 mt-1">
+              Track student fee status by academic level, class, and section.
+            </p>
+          </div>
+
+          {accountantView !== 'levels' && (
+            <button
+              onClick={handleBack}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm text-sm"
+            >
+              <ArrowLeft size={16} /> Back
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            { title: 'Academic Levels', value: levels.length || 4, icon: Building2, color: 'bg-indigo-500' },
+            { title: 'Pending Accounts', value: students.filter((student) => !student.feesPaid).length || 'Live', icon: Clock, color: 'bg-rose-500' },
+            { title: 'Fee Status', value: accountantView === 'students' ? `${students.length} Students` : 'Directory', icon: DollarSign, color: 'bg-emerald-500' },
+          ].map((stat, index) => (
+            <div key={index} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-4">
+              <div className={`p-4 rounded-xl ${stat.color} text-white shadow-md shrink-0`}>
+                <stat.icon size={24} />
+              </div>
+              <div>
+                <h3 className="text-slate-500 text-xs font-bold uppercase tracking-widest leading-none mb-1">{stat.title}</h3>
+                <p className="text-2xl font-extrabold text-slate-900 mt-1">{stat.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {accountantView === 'levels' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+            {levels.map((level) => {
+              const Icon = levelIconMap[level.name as keyof typeof levelIconMap] || Building2;
+
+              return (
+                <button
+                  key={level.id}
+                  onClick={() => void openLevel(level)}
+                  className="text-left bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow group"
+                >
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="p-4 rounded-xl bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                      <Icon size={24} />
+                    </div>
+                    <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900">{level.name}</h2>
+                  <p className="text-slate-500 text-sm mt-2">{level.classCount} classes</p>
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-4">{level.studentCount} students</p>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {accountantView === 'classes' && activeLevel && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+              <h2 className="text-xl font-bold text-slate-900">{activeLevel.name}</h2>
+              <p className="text-slate-500 text-sm mt-1">Select a class to view its sections.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {classes.map((financeClass) => (
+                <button
+                  key={financeClass.id}
+                  onClick={() => void openClass(financeClass)}
+                  className="text-left bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black text-lg">
+                      {financeClass.name}
+                    </div>
+                    <ChevronRight size={18} className="text-slate-300 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all" />
+                  </div>
+                  <h3 className="mt-5 text-lg font-bold text-slate-900">Class {financeClass.name}</h3>
+                  <p className="text-slate-500 text-sm mt-2">{financeClass.sectionCount} sections</p>
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-4">{financeClass.studentCount} students</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {accountantView === 'sections' && activeClass && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+              <h2 className="text-xl font-bold text-slate-900">Class {activeClass.name}</h2>
+              <p className="text-slate-500 text-sm mt-1">Select a section to inspect student fee status.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {sections.map((section) => (
+                <button
+                  key={section.id}
+                  onClick={() => void openSection(section)}
+                  className="text-left bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-lg">
+                      {section.name}
+                    </div>
+                    <ChevronRight size={18} className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                  </div>
+                  <h3 className="mt-5 text-lg font-bold text-slate-900">Section {section.name}</h3>
+                  <p className="mt-2 text-sm text-slate-600 flex items-center gap-2">
+                    <Shield size={14} className="text-blue-500" /> {section.classTeacher}
+                  </p>
+                  <p className="mt-2 text-sm text-slate-600 flex items-center gap-2">
+                    <MapPin size={14} className="text-blue-500" /> {section.roomNumber || 'Room TBD'}
+                  </p>
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-4">{section.studentCount} students</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {accountantView === 'students' && activeSection && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+              <h2 className="text-xl font-bold text-slate-900">Section {activeSection.name}</h2>
+              <p className="text-slate-500 text-sm mt-1">Student fee status overview for this section.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {students.map((student) => (
+                <div key={student.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center font-black text-3xl text-slate-300">
+                      {student.rollNo}
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${student.feesPaid ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                      {student.feesPaid ? 'Paid' : 'Pending'}
+                    </span>
+                  </div>
+                  <h4 className="text-xl font-bold text-slate-800 mb-3">{student.name}</h4>
+                  <p className="text-sm text-slate-600 flex items-center gap-2">
+                    <User size={14} className="text-indigo-500" /> Roll No: {student.rollNo}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 lg:pb-12 h-full">

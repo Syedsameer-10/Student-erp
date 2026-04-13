@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { 
   ChevronLeft, ChevronRight, Plus, 
-  Trash2, X, Filter 
+  Trash2, X, Filter, Clock
 } from 'lucide-react';
 import { 
   format, addMonths, subMonths, startOfMonth, endOfMonth, 
@@ -11,6 +11,8 @@ import {
 import { useCalendarStore } from '../../store/useCalendarStore';
 import type { CalendarEvent, EventType, EventScope } from '../../store/useCalendarStore';
 import { cn } from '../../components/layout/Sidebar';
+import Modal from '../common/Modal';
+import { useAuthStore } from '../../store/useAuthStore';
 
 interface CalendarProps {
   isAdmin?: boolean;
@@ -18,24 +20,44 @@ interface CalendarProps {
 
 const Calendar = ({ isAdmin = false }: CalendarProps) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const { user } = useAuthStore();
   const { events, addEvent, updateEvent, deleteEvent } = useCalendarStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [filterType, setFilterType] = useState<EventType | 'All'>('All');
+  const canManageEvents = isAdmin || user?.role === 'Admin' || user?.role === 'Governing Body';
   
   // Form State
   const [formData, setFormData] = useState<Omit<CalendarEvent, 'id'>>({
     title: '',
     date: format(new Date(), 'yyyy-MM-dd'),
+    time: '',
     type: 'Event',
     scope: 'All',
     description: '',
   });
 
+  const filteredEvents = useMemo(
+    () =>
+      events
+        .filter((e) => filterType === 'All' || e.type === filterType)
+        .sort((a, b) => {
+          if (a.date !== b.date) return a.date.localeCompare(b.date);
+          return (a.time || '99:99').localeCompare(b.time || '99:99');
+        }),
+    [events, filterType]
+  );
+
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
 
-  const filteredEvents = events.filter(e => filterType === 'All' || e.type === filterType);
+  const getEventBlockStyles = (type: EventType) =>
+    type === 'Holiday'
+      ? 'bg-rose-500 text-white hover:bg-rose-600'
+      : type === 'Festival'
+        ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+        : 'bg-blue-500 text-white hover:bg-blue-600';
 
   const renderHeader = () => {
     return (
@@ -56,9 +78,13 @@ const Calendar = ({ isAdmin = false }: CalendarProps) => {
               <ChevronRight size={20} className="text-slate-600" />
             </button>
           </div>
-          {isAdmin && (
+          {canManageEvents && (
             <button 
-              onClick={() => { setEditingEvent(null); setFormData({ title: '', date: format(new Date(), 'yyyy-MM-dd'), type: 'Event', scope: 'All', description: '' }); setIsModalOpen(true); }}
+              onClick={() => {
+                setEditingEvent(null);
+                setFormData({ title: '', date: format(new Date(), 'yyyy-MM-dd'), time: '', type: 'Event', scope: 'All', description: '' });
+                setIsModalOpen(true);
+              }}
               className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-600/20 font-semibold"
             >
               <Plus size={20} />
@@ -114,25 +140,20 @@ const Calendar = ({ isAdmin = false }: CalendarProps) => {
                   {format(d, 'd')}
                 </span>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {dayEvents.map(event => (
                   <div 
                     key={event.id}
                     onClick={() => {
-                      if (isAdmin) {
-                        setEditingEvent(event);
-                        setFormData({ ...event });
-                        setIsModalOpen(true);
-                      }
+                      setSelectedEvent(event);
                     }}
                     className={cn(
-                      "group relative px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all border",
-                      event.type === 'Holiday' ? "bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100" :
-                      event.type === 'Festival' ? "bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100" :
-                      "bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100"
+                      "w-full rounded-xl px-3 py-2.5 text-left transition-all shadow-sm",
+                      "overflow-hidden cursor-pointer",
+                      getEventBlockStyles(event.type)
                     )}
                   >
-                    <div className="truncate">{event.title}</div>
+                    <div className="truncate text-[11px] font-bold leading-tight text-white">{event.title}</div>
                   </div>
                 ))}
               </div>
@@ -250,6 +271,16 @@ const Calendar = ({ isAdmin = false }: CalendarProps) => {
               </div>
 
               <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700">Time (Optional)</label>
+                <input
+                  type="time"
+                  value={formData.time || ''}
+                  onChange={e => setFormData({ ...formData, time: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 bg-slate-50/50 transition-all outline-none"
+                />
+              </div>
+
+              <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-700">Applicable Scope</label>
                 <select 
                   value={formData.scope}
@@ -304,6 +335,62 @@ const Calendar = ({ isAdmin = false }: CalendarProps) => {
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={!!selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        title={selectedEvent?.title || 'Event Details'}
+      >
+        {selectedEvent && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <span className={cn('inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider border', getEventBlockStyles(selectedEvent.type))}>
+                {selectedEvent.type}
+              </span>
+              {selectedEvent.time && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                  <Clock size={12} />
+                  {selectedEvent.time}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Date</p>
+                <p className="mt-1 font-semibold text-slate-900">{format(parseISO(selectedEvent.date), 'dd MMM yyyy')}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Scope</p>
+                <p className="mt-1 font-semibold text-slate-900">{selectedEvent.scope}</p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Description</p>
+              <p className="mt-2 text-sm text-slate-700">
+                {selectedEvent.description || 'No additional details provided.'}
+              </p>
+            </div>
+
+            {canManageEvents && (
+              <div className="flex justify-end">
+                <button
+                  onClick={() => {
+                    setEditingEvent(selectedEvent);
+                    setFormData({ ...selectedEvent });
+                    setSelectedEvent(null);
+                    setIsModalOpen(true);
+                  }}
+                  className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 transition-colors"
+                >
+                  Edit Event
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

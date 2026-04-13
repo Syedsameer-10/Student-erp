@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMarksStore } from '../../store/useMarksStore';
+import { EXAM_TYPES, useMarksStore } from '../../store/useMarksStore';
 import type { ExamType } from '../../store/useMarksStore';
 import { Search, FileText, GraduationCap, ChevronDown } from 'lucide-react';
 import jsPDF from 'jspdf';
@@ -87,9 +87,9 @@ const AdminMarksDashboard = () => {
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-100 outline-none transition-all appearance-none cursor-pointer font-medium"
           >
             <option value="All">All Exams</option>
-            <option value="Internal">Internal</option>
-            <option value="Semester">Semester</option>
-            <option value="Assignment">Assignment</option>
+            {EXAM_TYPES.map((type) => (
+              <option key={type} value={type}>{type}</option>
+            ))}
           </select>
           <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
         </div>

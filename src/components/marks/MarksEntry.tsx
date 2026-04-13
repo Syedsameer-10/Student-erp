@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMarksStore } from '../../store/useMarksStore';
+import { EXAM_TYPES, useMarksStore } from '../../store/useMarksStore';
 import type { ExamType } from '../../store/useMarksStore';
 import { mockStudents } from '../../mock-data';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -10,7 +10,7 @@ const MarksEntry = () => {
   const { addMark, marks, updateMark } = useMarksStore();
   const [selectedClass, setSelectedClass] = useState('10-A');
   const [selectedSubject] = useState(user?.subject || 'Mathematics');
-  const [examType, setExamType] = useState<ExamType>('Internal');
+  const [examType, setExamType] = useState<ExamType>('Unit Test');
   const [notification, setNotification] = useState<string | null>(null);
 
   const students = mockStudents.filter(s => s.class === selectedClass);
@@ -92,9 +92,9 @@ const MarksEntry = () => {
             onChange={e => setExamType(e.target.value as ExamType)}
             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 outline-none transition-all bg-slate-50/50"
           >
-            <option value="Internal">Internal Assessment</option>
-            <option value="Semester">Semester Exam</option>
-            <option value="Assignment">Assignment</option>
+            {EXAM_TYPES.map((type) => (
+              <option key={type} value={type}>{type}</option>
+            ))}
           </select>
         </div>
         <div className="flex items-end">
