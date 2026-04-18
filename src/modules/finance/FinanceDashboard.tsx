@@ -6,6 +6,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { fetchLevels, fetchClasses, fetchSections, fetchStudents } from './financeApi';
 import type { FinanceLevel, FinanceClass, FinanceSection, FinanceStudent } from './financeApi';
+import { formatCurrency } from '../../utils/formatCurrency';
 
 type AccountantView = 'levels' | 'classes' | 'sections' | 'students';
 
@@ -104,10 +105,10 @@ const FinanceDashboard = () => {
 
     // Fee Breakdown Table
     const breakdown = [
-      ['Tuition Fees', `$${(fee.totalAmount * 0.7).toFixed(2)}`],
-      ['Library & Lab Fees', `$${(fee.totalAmount * 0.15).toFixed(2)}`],
-      ['Van & Transport Fees', `$${(fee.totalAmount * 0.1).toFixed(2)}`],
-      ['Extracurricular Activities', `$${(fee.totalAmount * 0.05).toFixed(2)}`],
+      ['Tuition Fees', formatCurrency((fee.totalAmount * 0.7).toFixed(2))],
+      ['Library & Lab Fees', formatCurrency((fee.totalAmount * 0.15).toFixed(2))],
+      ['Van & Transport Fees', formatCurrency((fee.totalAmount * 0.1).toFixed(2))],
+      ['Extracurricular Activities', formatCurrency((fee.totalAmount * 0.05).toFixed(2))],
     ];
 
     autoTable(doc, {
@@ -116,7 +117,7 @@ const FinanceDashboard = () => {
       startY: 85,
       theme: 'striped',
       headStyles: { fillColor: [79, 70, 229] },
-      foot: [['Total Amount', `$${fee.totalAmount.toFixed(2)}`]],
+      foot: [['Total Amount', formatCurrency(fee.totalAmount.toFixed(2))]],
       footStyles: { fillColor: [249, 250, 251], textColor: [0, 0, 0], fontStyle: 'bold' }
     });
 
@@ -321,9 +322,9 @@ const FinanceDashboard = () => {
 
       {user?.role !== 'Student' ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            { title: 'Total Revenue YTD', value: '$124,500', icon: DollarSign, color: 'bg-emerald-500' },
-            { title: 'Pending Receivables', value: '$12,800', icon: Clock, color: 'bg-amber-500' },
+          {[ 
+            { title: 'Total Revenue YTD', value: formatCurrency('124,500'), icon: DollarSign, color: 'bg-emerald-500' },
+            { title: 'Pending Receivables', value: formatCurrency('12,800'), icon: Clock, color: 'bg-amber-500' },
             { title: 'Success Rate', value: '94%', icon: Activity, color: 'bg-blue-500' },
           ].map((stat, i) => (
              <div key={i} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition-shadow">
@@ -343,14 +344,14 @@ const FinanceDashboard = () => {
                <div className="p-4 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100"><CreditCard size={24} /></div>
                <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Total Fee Paid</p>
-                  <p className="text-2xl font-bold text-slate-900">$8,500.00</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatCurrency('8,500.00')}</p>
                </div>
            </div>
            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
                <div className="p-4 bg-amber-500 text-white rounded-xl shadow-lg shadow-amber-100"><Clock size={24} /></div>
                <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Pending Dues</p>
-                  <p className="text-2xl font-bold text-slate-900">$1,200.00</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatCurrency('1,200.00')}</p>
                </div>
            </div>
         </div>
@@ -395,7 +396,7 @@ const FinanceDashboard = () => {
                      {fee.type.includes('Term') ? 'Mid Term 2026' : fee.type.includes('Half') ? 'H1 Semester' : 'Full Session'}
                   </td>
                   <td className="px-6 py-4">
-                     <span className="font-extrabold text-slate-900 block text-base">${fee.totalAmount.toLocaleString()}</span>
+                     <span className="font-extrabold text-slate-900 block text-base">{formatCurrency(fee.totalAmount.toLocaleString())}</span>
                      <span className={`text-[10px] font-bold uppercase ${fee.status === 'Paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
                        {fee.status === 'Paid' ? 'Full Payment Received' : 'Partial Payment Pending'}
                      </span>

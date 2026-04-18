@@ -3,6 +3,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { mockStudents, mockFees, mockEvents } from '../../mock-data';
 import { useNavigate } from 'react-router-dom';
+import { formatCurrency } from '../../utils/formatCurrency';
 
 const performanceData = [
   { name: 'Unit 1', score: 75 },
@@ -44,7 +45,7 @@ const StudentDashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { title: 'Upcoming Events', value: upcomingEvents.toString(), icon: Calendar, color: 'bg-orange-500', path: '/student/events' },
-          { title: 'Pending Fees', value: feeData ? `$${feeData.pendingAmount.toLocaleString()}` : '$0', icon: CreditCard, color: 'bg-rose-500', path: '/student/fees' },
+          { title: 'Pending Fees', value: feeData ? formatCurrency(feeData.pendingAmount.toLocaleString()) : formatCurrency(0), icon: CreditCard, color: 'bg-rose-500', path: '/student/fees' },
           { title: 'Assignments Due', value: '2', icon: Clock, color: 'bg-blue-500', path: '/student/materials' },
           { title: 'Recent Awards', value: '1', icon: Award, color: 'bg-amber-500', path: '#' },
         ].map((stat, i) => (

@@ -12,3 +12,12 @@ command = '''
 cd school-erp-system
 npm run dev
 '''
+
+[[actions]]
+name = "backend run"
+icon = "tool"
+command = '''
+cd school-erp-system
+cd backend
+node server.js
+'''
