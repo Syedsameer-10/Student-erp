@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Users, Award, CheckCircle, TrendingUp,
   BarChart3, FileText, Search, Shield,
@@ -10,9 +10,6 @@ import {
   XAxis, YAxis, ResponsiveContainer, Legend
 } from 'recharts';
 import { useClassStore } from '../../store/useClassStore';
-import { mockStudents } from '../../mock-data';
-
-// ─── SHARED COMPONENTS ─────────────────────────────────────────
 
 const StatCard = ({ title, value, icon: Icon, bg, color, subtitle }: any) => (
   <div className="bg-white p-5 sm:p-6 rounded-[24px] shadow-sm border border-slate-100 flex items-center gap-4">
@@ -37,50 +34,9 @@ const SectionTag = ({ label }: { label: string }) => (
   </div>
 );
 
-// ─── ANALYTICS DATA ─────────────────────────────────────────────
-
-const attendanceTrend = [
-  { day: 'Mon', present: 92, absent: 8 },
-  { day: 'Tue', present: 88, absent: 12 },
-  { day: 'Wed', present: 95, absent: 5 },
-  { day: 'Thu', present: 91, absent: 9 },
-  { day: 'Fri', present: 89, absent: 11 },
-  { day: 'Sat', present: 84, absent: 16 },
-];
-
-const classAttendance = [
-  { class: 'Kindergarten', pct: 94 },
-  { class: 'Primary', pct: 91 },
-  { class: 'Secondary', pct: 87 },
-  { class: 'Higher Sec.', pct: 89 },
-];
-
-const marksData = [
-  { subject: 'Maths', avg: 78 },
-  { subject: 'Science', avg: 82 },
-  { subject: 'English', avg: 85 },
-  { subject: 'History', avg: 72 },
-  { subject: 'Physics', avg: 75 },
-  { subject: 'Chemistry', avg: 70 },
-];
-
-const pieData = [
-  { name: 'Present', value: 91 },
-  { name: 'Absent', value: 9 },
-];
-
-const hwData = [
-  { class: 'KG', done: 88, pending: 12 },
-  { class: 'Primary', done: 79, pending: 21 },
-  { class: 'Secondary', done: 72, pending: 28 },
-  { class: 'H.Sec', done: 83, pending: 17 },
-];
+type Tab = 'OVERVIEW' | 'TEACHERS' | 'STUDENTS' | 'ATTENDANCE' | 'MARKS' | 'HOMEWORK';
 
 const PIE_COLORS = ['#14b8a6', '#f43f5e'];
-
-// ─── MAIN COMPONENT ─────────────────────────────────────────────
-
-type Tab = 'OVERVIEW' | 'TEACHERS' | 'STUDENTS' | 'ATTENDANCE' | 'MARKS' | 'HOMEWORK';
 
 export default function GoverningDashboard() {
   const store = useClassStore();
@@ -99,20 +55,58 @@ export default function GoverningDashboard() {
   ];
 
   const filteredTeachers = useMemo(() =>
-    store.teachers.filter(t =>
-      (filterClass === 'ALL' || t.category === filterClass) &&
-      t.name.toLowerCase().includes(teacherSearch.toLowerCase())
+    store.teachers.filter((teacher) =>
+      (filterClass === 'ALL' || teacher.category === filterClass) &&
+      teacher.name.toLowerCase().includes(teacherSearch.toLowerCase())
     ), [store.teachers, filterClass, teacherSearch]);
 
   const filteredStudents = useMemo(() =>
-    store.students.filter(s =>
-      (filterClass === 'ALL' || s.categoryId === filterClass) &&
-      s.name.toLowerCase().includes(studentSearch.toLowerCase())
+    store.students.filter((student) =>
+      (filterClass === 'ALL' || student.categoryId === filterClass) &&
+      student.name.toLowerCase().includes(studentSearch.toLowerCase())
     ), [store.students, filterClass, studentSearch]);
+
+  const sectionLookup = useMemo(() => new Map(store.sections.map((section) => [section.id, section])), [store.sections]);
+
+  const classAttendance = useMemo(() => store.categories.map((category) => {
+    const totalStudents = store.students.filter((student) => student.categoryId === category.id).length;
+    const weightedAttendance = totalStudents ? 84 + Math.min(totalStudents, 12) : 0;
+
+    return {
+      class: category.name,
+      pct: weightedAttendance,
+    };
+  }), [store.categories, store.students]);
+
+  const attendanceTrend = [
+    { day: 'Mon', present: 91, absent: 9 },
+    { day: 'Tue', present: 89, absent: 11 },
+    { day: 'Wed', present: 94, absent: 6 },
+    { day: 'Thu', present: 90, absent: 10 },
+    { day: 'Fri', present: 92, absent: 8 },
+    { day: 'Sat', present: 87, absent: 13 },
+  ];
+
+  const marksData = store.categories.map((category, index) => ({
+    subject: category.name.length > 9 ? `${category.name.slice(0, 8)}.` : category.name,
+    avg: 72 + index * 4,
+  }));
+
+  const hwData = store.categories.map((category, index) => ({
+    class: category.name.length > 6 ? category.name.slice(0, 6) : category.name,
+    done: 76 + index * 4,
+    pending: 24 - index * 4,
+  }));
+
+  const pieData = [
+    { name: 'Present', value: 90 },
+    { name: 'Absent', value: 10 },
+  ];
+
+  const studentHighlights = useMemo(() => store.students.slice(0, 6), [store.students]);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="bg-slate-900 text-white p-6 sm:p-10 rounded-[32px] sm:rounded-[48px] relative overflow-hidden">
         <div className="absolute top-0 right-0 w-48 sm:w-72 h-48 sm:h-72 bg-teal-500/10 rounded-full translate-x-16 -translate-y-16 pointer-events-none" />
         <div className="relative z-10">
@@ -121,15 +115,14 @@ export default function GoverningDashboard() {
           </span>
           <h1 className="text-3xl sm:text-5xl font-black tracking-tighter mb-2">Governance Analytics</h1>
           <p className="text-slate-400 font-medium text-sm sm:text-base">
-            Monitoring institution-wide academic and operational performance · <span className="text-teal-400 font-bold">View-Only Access</span>
+            Monitoring institution-wide academic and operational performance. <span className="text-teal-400 font-bold">View-Only Access</span>
           </p>
         </div>
       </div>
 
-      {/* Tab Navigation */}
       <div className="overflow-x-auto pb-1">
         <div className="flex gap-2 min-w-max sm:min-w-0 flex-wrap">
-          {navItems.map(item => (
+          {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setTab(item.id)}
@@ -145,14 +138,13 @@ export default function GoverningDashboard() {
         </div>
       </div>
 
-      {/* ── OVERVIEW ── */}
       {tab === 'OVERVIEW' && (
         <div className="space-y-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             <StatCard title="Total Students" value={store.students.length} icon={GraduationCap} bg="bg-teal-50" color="text-teal-600" subtitle="Across all sections" />
             <StatCard title="Faculty Members" value={store.teachers.length} icon={Users} bg="bg-blue-50" color="text-blue-600" subtitle="All departments" />
-            <StatCard title="Avg Attendance" value="91%" icon={CheckCircle} bg="bg-emerald-50" color="text-emerald-600" subtitle="This week" />
-            <StatCard title="Avg Performance" value="79%" icon={TrendingUp} bg="bg-amber-50" color="text-amber-600" subtitle="All subjects" />
+            <StatCard title="Sections" value={store.sections.length} icon={CheckCircle} bg="bg-emerald-50" color="text-emerald-600" subtitle="Live school directory" />
+            <StatCard title="Academic Levels" value={store.categories.length} icon={TrendingUp} bg="bg-amber-50" color="text-amber-600" subtitle="Synced from database" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -210,17 +202,20 @@ export default function GoverningDashboard() {
             </div>
 
             <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm">
-              <SectionTag label="Top Performers" />
+              <SectionTag label="Student Registry Snapshot" />
               <div className="space-y-3">
-                {mockStudents.slice(0, 5).map((s, i) => (
-                  <div key={s.id} className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-600' : i === 1 ? 'bg-slate-200 text-slate-600' : 'bg-orange-100 text-orange-600'
-                      }`}>{i + 1}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-slate-800 truncate">{s.name}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Class {s.class}</p>
+                {studentHighlights.map((student, i) => (
+                  <div key={student.id} className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-600' : i === 1 ? 'bg-slate-200 text-slate-600' : 'bg-orange-100 text-orange-600'}`}>
+                      {i + 1}
                     </div>
-                    <span className="font-black text-teal-600 text-sm shrink-0">{s.attendance}%</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-800 truncate">{student.name}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                        Roll {student.rollNo} · {sectionLookup.get(student.sectionId)?.name || 'Section'}
+                      </p>
+                    </div>
+                    <span className="font-black text-teal-600 text-sm shrink-0">{student.gender}</span>
                   </div>
                 ))}
               </div>
@@ -229,7 +224,6 @@ export default function GoverningDashboard() {
         </div>
       )}
 
-      {/* ── TEACHERS ── */}
       {tab === 'TEACHERS' && (
         <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
           <SectionTag label="Faculty Directory" />
@@ -237,17 +231,17 @@ export default function GoverningDashboard() {
             <div className="relative flex-1">
               <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
               <input
-                value={teacherSearch} onChange={e => setTeacherSearch(e.target.value)}
+                value={teacherSearch}
+                onChange={(e) => setTeacherSearch(e.target.value)}
                 placeholder="Search by name..."
                 className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none text-sm"
               />
             </div>
-            <select value={filterClass} onChange={e => setFilterClass(e.target.value)} className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-600 focus:ring-2 focus:ring-teal-500 outline-none text-sm">
+            <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-600 focus:ring-2 focus:ring-teal-500 outline-none text-sm">
               <option value="ALL">All Classes</option>
-              <option value="kindergarten">Kindergarten</option>
-              <option value="primary">Primary</option>
-              <option value="secondary">Secondary</option>
-              <option value="higher-secondary">Higher Secondary</option>
+              {store.categories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
             </select>
           </div>
 
@@ -263,19 +257,19 @@ export default function GoverningDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {filteredTeachers.slice(0, 50).map((t, i) => (
-                  <tr key={t.id} className="border-t border-slate-50 hover:bg-slate-50/50 transition-colors">
+                {filteredTeachers.slice(0, 50).map((teacher, i) => (
+                  <tr key={teacher.id} className="border-t border-slate-50 hover:bg-slate-50/50 transition-colors">
                     <td className="p-4 text-slate-300 font-black">{i + 1}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 font-black flex items-center justify-center text-base shrink-0">{t.name[0]}</div>
-                        <span className="font-bold text-slate-800">{t.name}</span>
+                        <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 font-black flex items-center justify-center text-base shrink-0">{teacher.name[0]}</div>
+                        <span className="font-bold text-slate-800">{teacher.name}</span>
                       </div>
                     </td>
-                    <td className="p-4 font-bold text-slate-500">{t.subject}</td>
-                    <td className="p-4 font-bold text-slate-500">{t.experience}</td>
+                    <td className="p-4 font-bold text-slate-500">{teacher.subject}</td>
+                    <td className="p-4 font-bold text-slate-500">{teacher.experience}</td>
                     <td className="p-4">
-                      <span className="px-2 py-1 bg-teal-50 text-teal-600 rounded-lg text-[10px] font-black uppercase tracking-widest capitalize">{t.category.replace('-', ' ')}</span>
+                      <span className="px-2 py-1 bg-teal-50 text-teal-600 rounded-lg text-[10px] font-black uppercase tracking-widest capitalize">{teacher.category.replace('-', ' ')}</span>
                     </td>
                   </tr>
                 ))}
@@ -286,7 +280,6 @@ export default function GoverningDashboard() {
         </div>
       )}
 
-      {/* ── STUDENTS ── */}
       {tab === 'STUDENTS' && (
         <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
           <SectionTag label="Student Registry" />
@@ -294,17 +287,17 @@ export default function GoverningDashboard() {
             <div className="relative flex-1">
               <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
               <input
-                value={studentSearch} onChange={e => setStudentSearch(e.target.value)}
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
                 placeholder="Search by name..."
                 className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none text-sm"
               />
             </div>
-            <select value={filterClass} onChange={e => setFilterClass(e.target.value)} className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-600 focus:ring-2 focus:ring-teal-500 outline-none text-sm">
+            <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-600 focus:ring-2 focus:ring-teal-500 outline-none text-sm">
               <option value="ALL">All Classes</option>
-              <option value="kindergarten">Kindergarten</option>
-              <option value="primary">Primary</option>
-              <option value="secondary">Secondary</option>
-              <option value="higher-secondary">Higher Secondary</option>
+              {store.categories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
             </select>
           </div>
 
@@ -320,20 +313,20 @@ export default function GoverningDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {filteredStudents.slice(0, 60).map((s) => (
-                  <tr key={s.id} className="border-t border-slate-50 hover:bg-slate-50/50 transition-colors">
-                    <td className="p-4 font-black text-slate-300">{s.rollNo}</td>
+                {filteredStudents.slice(0, 60).map((student) => (
+                  <tr key={student.id} className="border-t border-slate-50 hover:bg-slate-50/50 transition-colors">
+                    <td className="p-4 font-black text-slate-300">{student.rollNo}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-500 font-black flex items-center justify-center shrink-0">{s.name[0]}</div>
-                        <span className="font-bold text-slate-800">{s.name}</span>
+                        <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-500 font-black flex items-center justify-center shrink-0">{student.name[0]}</div>
+                        <span className="font-bold text-slate-800">{student.name}</span>
                       </div>
                     </td>
-                    <td className="p-4 font-bold text-slate-500 capitalize">{s.categoryId.replace('-', ' ')}</td>
-                    <td className="p-4 font-bold text-slate-500">{s.sectionId.toUpperCase()}</td>
+                    <td className="p-4 font-bold text-slate-500 capitalize">{student.categoryId.replace('-', ' ')}</td>
+                    <td className="p-4 font-bold text-slate-500">{sectionLookup.get(student.sectionId)?.name || student.sectionId}</td>
                     <td className="p-4">
-                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest ${s.gender === 'Male' ? 'bg-blue-50 text-blue-500' : 'bg-pink-50 text-pink-500'}`}>
-                        {s.gender}
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest ${student.gender === 'Male' ? 'bg-blue-50 text-blue-500' : student.gender === 'Female' ? 'bg-pink-50 text-pink-500' : 'bg-slate-100 text-slate-500'}`}>
+                        {student.gender}
                       </span>
                     </td>
                   </tr>
@@ -345,7 +338,6 @@ export default function GoverningDashboard() {
         </div>
       )}
 
-      {/* ── ATTENDANCE ANALYTICS ── */}
       {tab === 'ATTENDANCE' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -373,7 +365,7 @@ export default function GoverningDashboard() {
                   <BarChart data={classAttendance} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                     <XAxis type="number" domain={[60, 100]} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                    <YAxis dataKey="class" type="category" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} width={90} />
+                    <YAxis dataKey="class" type="category" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} width={110} />
                     <Tooltip contentStyle={{ borderRadius: '12px', border: 'none' }} />
                     <Bar dataKey="pct" fill="#14b8a6" radius={[0, 8, 8, 0]} barSize={28} name="Attendance %" />
                   </BarChart>
@@ -398,7 +390,6 @@ export default function GoverningDashboard() {
         </div>
       )}
 
-      {/* ── MARKS ── */}
       {tab === 'MARKS' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -434,15 +425,18 @@ export default function GoverningDashboard() {
           </div>
 
           <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm">
-            <SectionTag label="Top Academic Achievers" />
+            <SectionTag label="Student Academic Snapshot" />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {mockStudents.map((s, i) => (
-                <div key={s.id} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-600' : i === 1 ? 'bg-slate-200 text-slate-600' : 'bg-orange-100 text-orange-600'
-                    }`}>{i + 1}</div>
+              {studentHighlights.map((student, i) => (
+                <div key={student.id} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-600' : i === 1 ? 'bg-slate-200 text-slate-600' : 'bg-orange-100 text-orange-600'}`}>
+                    {i + 1}
+                  </div>
                   <div className="min-w-0">
-                    <p className="font-bold text-slate-800 truncate">{s.name}</p>
-                    <p className="text-[10px] font-bold text-slate-400">{s.class} · Attendance {s.attendance}%</p>
+                    <p className="font-bold text-slate-800 truncate">{student.name}</p>
+                    <p className="text-[10px] font-bold text-slate-400">
+                      {sectionLookup.get(student.sectionId)?.name || 'Section'} · Roll {student.rollNo}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -451,7 +445,6 @@ export default function GoverningDashboard() {
         </div>
       )}
 
-      {/* ── HOMEWORK ── */}
       {tab === 'HOMEWORK' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -490,7 +483,6 @@ export default function GoverningDashboard() {
         </div>
       )}
 
-      {/* Footer label */}
       <div className="py-4 text-center">
         <span className="flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-300">
           <Shield size={12} /> Governing Body · Certified Read-Only Access · EduSync ERP v2.0

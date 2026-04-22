@@ -1,9 +1,11 @@
 import { Calendar, Award, CreditCard, Clock, FileText } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { mockStudents, mockFees, mockEvents } from '../../mock-data';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '../../utils/formatCurrency';
+import { useEffect, useState } from 'react';
+import { fetchStudentAttendanceSummary } from '../../services/attendance';
+import { fetchStudentByProfile } from '../../services/schoolData';
 
 const performanceData = [
   { name: 'Unit 1', score: 75 },
@@ -15,10 +17,23 @@ const performanceData = [
 const StudentDashboard = () => {
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  
-  const studentData = mockStudents.find(s => s.email === user?.email);
-  const feeData = mockFees.find(f => f.studentEmail === user?.email);
-  const upcomingEvents = mockEvents.filter(e => e.status !== 'Completed').length;
+  const [studentData, setStudentData] = useState<any>(null);
+  const [attendance, setAttendance] = useState(0);
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    void (async () => {
+      const student = await fetchStudentByProfile(user.id);
+      setStudentData(student);
+      if (student) {
+        const summary = await fetchStudentAttendanceSummary(student.id);
+        setAttendance(summary.attendanceRate);
+      }
+    })();
+  }, [user?.id]);
 
   return (
     <div className="space-y-6">
@@ -33,7 +48,7 @@ const StudentDashboard = () => {
             className="px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-center cursor-pointer hover:bg-indigo-100 transition-colors"
           >
             <p className="text-xs text-indigo-600 font-semibold uppercase tracking-wider">Attendance</p>
-            <p className="text-xl font-bold text-indigo-700">{studentData?.attendance || 0}%</p>
+            <p className="text-xl font-bold text-indigo-700">{attendance}%</p>
           </div>
           <div className="px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-xl text-center">
             <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wider">Grade</p>
@@ -44,10 +59,10 @@ const StudentDashboard = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { title: 'Upcoming Events', value: upcomingEvents.toString(), icon: Calendar, color: 'bg-orange-500', path: '/student/events' },
-          { title: 'Pending Fees', value: feeData ? formatCurrency(feeData.pendingAmount.toLocaleString()) : formatCurrency(0), icon: CreditCard, color: 'bg-rose-500', path: '/student/fees' },
-          { title: 'Assignments Due', value: '2', icon: Clock, color: 'bg-blue-500', path: '/student/materials' },
-          { title: 'Recent Awards', value: '1', icon: Award, color: 'bg-amber-500', path: '#' },
+          { title: 'Attendance Rate', value: `${attendance}%`, icon: Calendar, color: 'bg-orange-500', path: '/student/attendance' },
+          { title: 'Pending Fees', value: formatCurrency(0), icon: CreditCard, color: 'bg-rose-500', path: '/student/fees' },
+          { title: 'Assignments Due', value: '0', icon: Clock, color: 'bg-blue-500', path: '/student/materials' },
+          { title: 'Recent Awards', value: '0', icon: Award, color: 'bg-amber-500', path: '#' },
         ].map((stat, i) => (
           <div 
             key={i} 

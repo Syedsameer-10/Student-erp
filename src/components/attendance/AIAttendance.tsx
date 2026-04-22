@@ -1,15 +1,14 @@
 import { useMemo, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, Loader2, RefreshCcw, Upload } from 'lucide-react';
 import { useAttendanceStore } from '../../store/useAttendanceStore';
-
-type AttendanceValue = 'P' | 'A';
+import { generateAttendancePreview, saveAttendanceConfirmation } from '../../services/attendance';
+import type { AttendanceValue } from '../../types/attendance';
 
 interface AttendanceRow {
   studentName: string;
   attendance: AttendanceValue[];
 }
 
-const AI_ATTENDANCE_API_BASE = 'http://localhost:5000/api';
 const DEFAULT_DAY_COUNT = 5;
 
 const AIAttendance = () => {
@@ -43,19 +42,7 @@ const AIAttendance = () => {
       const previewUrl = URL.createObjectURL(file);
       setImagePreview(previewUrl);
 
-      const formData = new FormData();
-      formData.append('image', file);
-
-      const response = await fetch(`${AI_ATTENDANCE_API_BASE}/ai-attendance`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload?.error || payload?.rawResponse || 'Failed to process attendance image.');
-      }
+      const payload = await generateAttendancePreview(file);
 
       const students = Array.isArray(payload?.data?.students) ? payload.data.students : [];
       if (students.length === 0) {
@@ -120,23 +107,11 @@ const AIAttendance = () => {
     setNotification(null);
 
     try {
-      const response = await fetch(`${AI_ATTENDANCE_API_BASE}/confirm-attendance`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sectionId: '10-A',
-          attendanceDate: new Date().toISOString().split('T')[0],
-          students: normalizedRows,
-        }),
+      await saveAttendanceConfirmation({
+        sectionId: '10-A',
+        attendanceDate: new Date().toISOString().split('T')[0],
+        students: normalizedRows,
       });
-
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Failed to save attendance.');
-      }
 
       addRecords(
         normalizedRows.map((row) => ({
@@ -148,8 +123,9 @@ const AIAttendance = () => {
           source: 'AI' as const,
           confidenceScore: 0.95,
           metadata: {
-            attendanceDays: row.attendance,
-            engine: 'Gemini AI',
+            consensus: 0.95,
+            engines: ['Gemini AI'],
+            reasoning: `Attendance sequence: ${row.attendance.join(', ')}`,
           },
         })) as any
       );

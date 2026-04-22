@@ -1,19 +1,29 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EXAM_TYPES, useMarksStore } from '../../store/useMarksStore';
 import type { ExamType } from '../../store/useMarksStore';
-import { mockStudents } from '../../mock-data';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Search, CheckCircle, AlertCircle, Users, BookOpen, GraduationCap } from 'lucide-react';
+import { useClassStore } from '../../store/useClassStore';
 
 const MarksEntry = () => {
   const { user } = useAuthStore();
+  const initialize = useClassStore((state) => state.initialize);
+  const sections = useClassStore((state) => state.sections);
+  const studentsData = useClassStore((state) => state.students);
   const { addMark, marks, updateMark } = useMarksStore();
-  const [selectedClass, setSelectedClass] = useState('10-A');
+  const [selectedClass, setSelectedClass] = useState(user?.classes?.[0] || '10-A');
   const [selectedSubject] = useState(user?.subject || 'Mathematics');
   const [examType, setExamType] = useState<ExamType>('Unit Test');
   const [notification, setNotification] = useState<string | null>(null);
 
-  const students = mockStudents.filter(s => s.class === selectedClass);
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
+
+  const students = useMemo(() => {
+    const section = sections.find((item) => item.name === selectedClass);
+    return section ? studentsData.filter((student) => student.sectionId === section.id) : [];
+  }, [sections, selectedClass, studentsData]);
 
   const handleSaveMarks = (studentId: string, studentName: string, value: string) => {
     const markValue = parseInt(value);
@@ -70,9 +80,9 @@ const MarksEntry = () => {
             onChange={e => setSelectedClass(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 outline-none transition-all bg-slate-50/50"
           >
-            <option value="10-A">Class 10-A</option>
-            <option value="10-B">Class 10-B</option>
-            <option value="10-C">Class 10-C</option>
+            {sections.map((section) => (
+              <option key={section.id} value={section.name}>Class {section.name}</option>
+            ))}
           </select>
         </div>
         <div className="space-y-2">
@@ -132,7 +142,7 @@ const MarksEntry = () => {
                       <span className="font-bold text-slate-900">{student.name}</span>
                     </div>
                   </td>
-                  <td className="px-8 py-4 text-slate-500 font-medium">#{student.id.replace('s', '')}</td>
+                  <td className="px-8 py-4 text-slate-500 font-medium">#{student.rollNo}</td>
                   <td className="px-8 py-4">
                     <div className="relative max-w-[120px]">
                       <input 

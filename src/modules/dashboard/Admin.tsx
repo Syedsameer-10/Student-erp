@@ -1,9 +1,11 @@
-import { Users, DollarSign, TrendingUp, Bell, FileText, Building2, Shield } from 'lucide-react';
+import { Users, IndianRupee, TrendingUp, Bell, FileText, Building2, Shield } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { useAuthStore } from '../../store/useAuthStore';
-import { mockNotifications } from '../../mock-data';
-import { mockStudents, mockTeachers } from '../../mock-data/hierarchy';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useClassStore } from '../../store/useClassStore';
+import { useComplaintStore } from '../../store/useComplaintStore';
+import { fetchComplaints } from '../../services/complaints';
 
 const attendanceData = [
   { name: 'Mon', present: 95, absent: 5 },
@@ -23,16 +25,26 @@ const gradeData = [
 
 const AdminDashboard = () => {
   const { user } = useAuthStore();
+  const initialize = useClassStore((state) => state.initialize);
+  const categories = useClassStore((state) => state.categories);
+  const teachers = useClassStore((state) => state.teachers);
+  const students = useClassStore((state) => state.students);
+  const complaints = useComplaintStore((state) => state.complaints);
+  const setComplaints = useComplaintStore((state) => state.setComplaints);
   const navigate = useNavigate();
 
-  const totalStudents = mockStudents.length;
-  const totalTeachers = mockTeachers.length;
-  // const totalFees = mockFees.reduce((acc, f) => acc + f.paidAmount, 0);
+  useEffect(() => {
+    void initialize();
+    void fetchComplaints().then(setComplaints).catch(console.error);
+  }, [initialize, setComplaints]);
+
+  const totalStudents = students.length;
+  const totalTeachers = teachers.length;
 
   const quickActions = [
     { name: 'Manage Classes', icon: Building2, path: '/admin/classes' },
     { name: 'Sections Hub', icon: Users, path: '/admin/classes' },
-    { name: 'Fees & Finance', icon: DollarSign, path: '/admin/fees' },
+    { name: 'Fees & Finance', icon: IndianRupee, path: '/admin/fees' },
     { name: 'Generate Report', icon: FileText, path: '/admin/reports' },
   ];
 
@@ -46,10 +58,10 @@ const AdminDashboard = () => {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { title: 'Academic Classes', value: '4 Levels', icon: Building2, color: 'bg-indigo-600', trend: 'Preschool to Higher Sec', path: '/admin/classes' },
-          { title: 'Total Teachers', value: totalTeachers.toString(), icon: Shield, color: 'bg-emerald-600', trend: '25+ per category', path: '/admin/classes' },
-          { title: 'Total Students', value: totalStudents.toString(), icon: Users, color: 'bg-blue-600', trend: '10+ per section', path: '/admin/classes' },
-          { title: 'Finance Overview', value: 'Active', icon: DollarSign, color: 'bg-rose-600', trend: 'Fees tracking enabled', path: '/admin/fees' },
+          { title: 'Academic Classes', value: `${categories.length} Levels`, icon: Building2, color: 'bg-indigo-600', trend: 'Live from Supabase', path: '/admin/classes' },
+          { title: 'Total Teachers', value: totalTeachers.toString(), icon: Shield, color: 'bg-emerald-600', trend: 'Faculty records in DB', path: '/admin/classes' },
+          { title: 'Total Students', value: totalStudents.toString(), icon: Users, color: 'bg-blue-600', trend: 'Enrollment records in DB', path: '/admin/classes' },
+          { title: 'Finance Overview', value: 'Active', icon: IndianRupee, color: 'bg-rose-600', trend: 'Fees tracking enabled', path: '/admin/fees' },
         ].map((stat, i) => (
           <div
             key={i}
@@ -120,16 +132,16 @@ const AdminDashboard = () => {
             <button className="text-sm font-medium text-indigo-600 hover:text-indigo-700">View All</button>
           </div>
           <div className="space-y-4">
-            {mockNotifications.slice(0, 3).map((notif) => (
+            {complaints.slice(0, 3).map((notif) => (
               <div key={notif.id} className="flex gap-4 items-start p-3 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${notif.type === 'Fee' ? 'bg-rose-100 text-rose-600' : 'bg-indigo-100 text-indigo-600'
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${notif.priority === 'High' ? 'bg-rose-100 text-rose-600' : 'bg-indigo-100 text-indigo-600'
                   }`}>
                   <Bell size={18} />
                 </div>
                 <div>
                   <h4 className="text-sm font-medium text-slate-900">{notif.title}</h4>
-                  <p className="text-xs text-slate-500 mt-1 line-clamp-1">{notif.message}</p>
-                  <span className="text-[10px] font-medium text-slate-400 mt-2 block">{notif.timestamp}</span>
+                  <p className="text-xs text-slate-500 mt-1 line-clamp-1">{notif.description}</p>
+                  <span className="text-[10px] font-medium text-slate-400 mt-2 block">{new Date(notif.createdAt).toLocaleDateString()}</span>
                 </div>
               </div>
             ))}

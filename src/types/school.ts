@@ -1,0 +1,45 @@
+export interface ITeacher {
+  id: string;
+  profileId?: string | null;
+  name: string;
+  category: string;
+  subject: string;
+  qualification: string;
+  experience: string;
+  contact: string;
+  email: string;
+  assignedClass: string;
+  standards?: string[];
+}
+
+export interface IStudent {
+  id: string;
+  profileId?: string | null;
+  name: string;
+  email?: string;
+  rollNo: string;
+  categoryId: string;
+  sectionId: string;
+  gender: 'Male' | 'Female' | 'Other';
+  dob: string;
+  contact: string;
+  parentName: string;
+  parentContact: string;
+  address: string;
+}
+
+export interface ISection {
+  id: string;
+  categoryId: string;
+  name: string;
+  classTeacher: string;
+  strength: number;
+  roomNumber?: string;
+}
+
+export interface IClassCategory {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}

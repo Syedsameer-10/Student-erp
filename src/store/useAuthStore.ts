@@ -1,50 +1,44 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { mockUsers } from '../mock-data';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  standard?: string;
-  class?: string;
-  section?: string;
-  standards?: string[];
-  classes?: string[];
-  subject?: string;
-}
+import type { AuthenticatedUser } from '../services/auth';
+import { initializeSupabaseAuth, loginWithSupabase, logoutFromSupabase } from '../services/auth';
 
 interface AuthState {
-  user: User | null;
+  user: AuthenticatedUser | null;
   isAuthenticated: boolean;
-  login: (email: string) => Promise<boolean>;
-  logout: () => void;
+  isLoading: boolean;
+  initialize: () => Promise<void>;
+  login: (email: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      isAuthenticated: false,
-      login: async (email: string) => {
-        // Simulate API call delay
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const user = mockUsers.find((u) => u.email === email);
-        if (user) {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { password, ...userWithoutPassword } = user;
-          set({ user: userWithoutPassword as User, isAuthenticated: true });
-          return true;
-        }
-        return false;
-      },
-      logout: () => {
-        set({ user: null, isAuthenticated: false });
-      },
-    }),
-    {
-      name: 'auth-storage',
+export const useAuthStore = create<AuthState>()((set) => ({
+  user: null,
+  isAuthenticated: false,
+  isLoading: true,
+  initialize: async () => {
+    try {
+      const user = await initializeSupabaseAuth();
+      set({
+        user,
+        isAuthenticated: Boolean(user),
+        isLoading: false,
+      });
+    } catch (error) {
+      console.error('Failed to initialize auth:', error);
+      set({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+      });
     }
-  )
-);
+  },
+  login: async (email: string, password: string) => {
+    const user = await loginWithSupabase(email, password);
+    set({ user, isAuthenticated: true });
+    return true;
+  },
+  logout: async () => {
+    await logoutFromSupabase();
+    set({ user: null, isAuthenticated: false });
+  },
+}));

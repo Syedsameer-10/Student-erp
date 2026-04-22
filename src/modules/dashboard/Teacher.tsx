@@ -1,13 +1,25 @@
 import { Users, BookOpen, UserCheck, Calendar, FileText } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
-import { mockStudents } from '../../mock-data';
 import { useNavigate } from 'react-router-dom';
+import { useClassStore } from '../../store/useClassStore';
+import { useEffect, useMemo } from 'react';
 
 const TeacherDashboard = () => {
   const { user } = useAuthStore();
+  const initialize = useClassStore((state) => state.initialize);
+  const sections = useClassStore((state) => state.sections);
+  const students = useClassStore((state) => state.students);
   const navigate = useNavigate();
   const assignedClasses = user?.classes || [];
-  const totalStudents: number = mockStudents.filter(s => assignedClasses.includes(s.class)).length;
+
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
+
+  const totalStudents = useMemo(() => {
+    const matchingSections = sections.filter((section) => assignedClasses.includes(section.name)).map((section) => section.id);
+    return students.filter((student) => matchingSections.includes(student.sectionId)).length;
+  }, [assignedClasses, sections, students]);
 
   return (
     <div className="space-y-6">

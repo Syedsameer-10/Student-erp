@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Baby, BookOpen, GraduationCap, Building2,
@@ -41,6 +41,7 @@ const Toast = ({ msg, onClose }: { msg: string; onClose: () => void }) => (
 // ─── Main Dashboard ────────────────────────────────────────────
 export default function ClassesDashboard() {
     const store = useClassStore();
+    const initialize = useClassStore((state) => state.initialize);
 
     const [view, setView] = useState<'DASHBOARD' | 'CATEGORY' | 'SECTION' | 'TEACHER_PROFILE' | 'STUDENT_PROFILE'>('DASHBOARD');
     const [activeCategoryID, setActiveCategoryID] = useState<string | null>(null);
@@ -53,45 +54,51 @@ export default function ClassesDashboard() {
     const activeClass = store.categories.find(c => c.id === activeCategoryID);
     const activeSection = store.sections.find(s => s.id === activeSectionID);
 
+    useEffect(() => {
+        void initialize();
+    }, [initialize]);
+
     const notify = (msg: string) => {
         setToast(msg);
         setTimeout(() => setToast(null), 3000);
     };
 
-    const handleDelete = () => {
+    const handleDelete = async () => {
         if (!confirmDelete) return;
-        if (confirmDelete.type === 'SECTION') store.deleteSection(confirmDelete.id);
-        if (confirmDelete.type === 'TEACHER') store.deleteTeacher(confirmDelete.id);
-        if (confirmDelete.type === 'STUDENT') store.deleteStudent(confirmDelete.id);
+        if (confirmDelete.type === 'SECTION') await store.deleteSection(confirmDelete.id);
+        if (confirmDelete.type === 'TEACHER') await store.deleteTeacher(confirmDelete.id);
+        if (confirmDelete.type === 'STUDENT') await store.deleteStudent(confirmDelete.id);
         setConfirmDelete(null);
         notify('Entry removed from registry.');
     };
 
-    const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
         const get = (k: string) => fd.get(k) as string;
 
         if (showModal?.type === 'SECTION') {
-            store.addSection({
+            await store.addSection({
                 name: get('name'), categoryId: activeCategoryID!,
                 classTeacher: get('teacher'), strength: parseInt(get('strength')) || 20,
                 roomNumber: get('room') || undefined,
             });
             notify('Section added successfully.');
         } else if (showModal?.type === 'TEACHER') {
-            store.addTeacher({
+            await store.addTeacher({
                 name: get('name'), subject: get('subject'), category: activeCategoryID!,
                 qualification: get('qual'), experience: get('exp'),
-                contact: get('phone'), email: '', assignedClass: activeClass?.name || '',
+                contact: get('phone'), email: `${get('name').toLowerCase().replace(/\s+/g, '.')}@school.edu`, assignedClass: activeClass?.name || '',
+                standards: activeClass?.name ? [activeClass.name] : [],
             });
             notify('Teacher registered successfully.');
         } else if (showModal?.type === 'STUDENT') {
-            store.addStudent({
+            await store.addStudent({
                 name: get('name'), rollNo: get('roll'), categoryId: activeCategoryID!,
                 sectionId: activeSectionID!, gender: get('gender') as any,
                 dob: get('dob'), contact: get('phone'),
-                parentName: get('parent'), parentContact: '', address: 'New Delhi',
+                parentName: get('parent'), parentContact: get('phone'), address: 'New Delhi',
+                email: `${get('name').toLowerCase().replace(/\s+/g, '.')}@school.edu`,
             });
             notify('Student admitted successfully.');
         }

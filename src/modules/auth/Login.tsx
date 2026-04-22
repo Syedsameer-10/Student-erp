@@ -31,7 +31,7 @@ const LoginModule = () => {
     try {
       setError('');
       setIsLoading(true);
-      const success = await login(data.email); // using mock based auth using email alone essentially
+      const success = await login(data.email, data.password);
 
       if (success) {
         const userRole = useAuthStore.getState().user?.role;
@@ -54,7 +54,7 @@ const LoginModule = () => {
         setError('Invalid credentials. Please try again.');
       }
     } catch (err) {
-      setError('An error occurred. Please try again later.');
+      setError(err instanceof Error ? err.message : 'An error occurred. Please try again later.');
     } finally {
       setIsLoading(false);
     }
@@ -141,7 +141,7 @@ const LoginModule = () => {
       </form>
       
       <div className="mt-6 border-t border-slate-100 pt-6">
-        <p className="text-xs text-slate-500 text-center uppercase tracking-wider font-semibold mb-3">Mock Credentials</p>
+        <p className="text-xs text-slate-500 text-center uppercase tracking-wider font-semibold mb-3">Supabase Accounts</p>
         <div className="flex flex-wrap justify-center gap-2">
           {['admin', 'teacher', 'student', 'accountant', 'governing'].map(role => (
             <span key={role} className="inline-flex items-center px-2 py-1 rounded-md bg-slate-100 text-slate-600 text-xs font-mono">

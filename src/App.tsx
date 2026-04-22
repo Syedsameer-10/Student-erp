@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuthStore } from './store/useAuthStore';
+import { useClassStore } from './store/useClassStore';
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import LoginModule from './modules/auth/Login';
@@ -24,9 +26,15 @@ import MarksEntry from './components/marks/MarksEntry';
 import StudentMarks from './components/marks/StudentMarks';
 import AdminMarksDashboard from './components/marks/AdminMarksDashboard';
 import AIAttendance from './components/attendance/AIAttendance';
+import ComplaintForm from './components/complaints/ComplaintForm';
+import ComplaintInbox from './components/complaints/ComplaintInbox';
 
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) => {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, isLoading, user } = useAuthStore();
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center min-h-screen text-slate-500">Loading...</div>;
+  }
 
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />;
@@ -40,6 +48,22 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
 };
 
 function App() {
+  const initialize = useAuthStore((state) => state.initialize);
+  const isLoading = useAuthStore((state) => state.isLoading);
+  const initializeSchoolData = useClassStore((state) => state.initialize);
+
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
+
+  useEffect(() => {
+    void initializeSchoolData();
+  }, [initializeSchoolData]);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center min-h-screen text-slate-500">Loading...</div>;
+  }
+
   return (
     <BrowserRouter>
       <Routes>
@@ -74,6 +98,7 @@ function App() {
           <Route path="/teacher/ai-attendance" element={<ProtectedRoute allowedRoles={['Teacher']}><div className="p-8"><AIAttendance /></div></ProtectedRoute>} />
           <Route path="/teacher/marks-entry" element={<ProtectedRoute allowedRoles={['Teacher']}><div className="p-8"><MarksEntry /></div></ProtectedRoute>} />
           <Route path="/teacher/leave-requests" element={<ProtectedRoute allowedRoles={['Teacher']}><div className="p-8"><LeaveRequestList /></div></ProtectedRoute>} />
+          <Route path="/teacher/complaints" element={<ProtectedRoute allowedRoles={['Teacher']}><div className="p-8"><ComplaintInbox /></div></ProtectedRoute>} />
           <Route path="/teacher/assignments" element={<ProtectedRoute allowedRoles={['Teacher']}><Assignments /></ProtectedRoute>} />
           <Route path="/teacher/materials" element={<ProtectedRoute allowedRoles={['Teacher']}><StudyMaterials /></ProtectedRoute>} />
           <Route path="/teacher/events" element={<ProtectedRoute allowedRoles={['Teacher']}><EventDashboard /></ProtectedRoute>} />
@@ -88,12 +113,14 @@ function App() {
           <Route path="/student/events" element={<ProtectedRoute allowedRoles={['Student']}><EventDashboard /></ProtectedRoute>} />
           <Route path="/student/calendar" element={<ProtectedRoute allowedRoles={['Student']}><div className="p-8"><Calendar /></div></ProtectedRoute>} />
           <Route path="/student/leave" element={<ProtectedRoute allowedRoles={['Student']}><div className="p-8"><LeaveRequestForm /></div></ProtectedRoute>} />
+          <Route path="/student/complaints" element={<ProtectedRoute allowedRoles={['Student']}><div className="p-8"><ComplaintForm /></div></ProtectedRoute>} />
 
           {/* --- Accountant Routes --- */}
           <Route path="/accountant/fees" element={<ProtectedRoute allowedRoles={['Accountant']}><FinanceDashboard /></ProtectedRoute>} />
 
           {/* --- Governing Body Routes --- */}
           <Route path="/governing/dashboard" element={<ProtectedRoute allowedRoles={['Governing Body']}><div className="p-8"><GoverningDashboard /></div></ProtectedRoute>} />
+          <Route path="/governing/complaints" element={<ProtectedRoute allowedRoles={['Governing Body']}><div className="p-8"><ComplaintInbox /></div></ProtectedRoute>} />
           <Route path="/governing/calendar" element={<ProtectedRoute allowedRoles={['Governing Body']}><div className="p-8"><Calendar /></div></ProtectedRoute>} />
           <Route path="/governing/reports" element={<ProtectedRoute allowedRoles={['Governing Body']}><ReportsPage /></ProtectedRoute>} />
         </Route>

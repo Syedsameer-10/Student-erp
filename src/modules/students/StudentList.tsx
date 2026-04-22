@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Baby,
@@ -33,9 +33,15 @@ const categoryMeta: Record<string, { subtitle: string; standards: string }> = {
 
 const StudentList = () => {
   const { categories, sections, students, inCharges } = useClassStore();
+  const initialize = useClassStore((state) => state.initialize);
+  const isLoading = useClassStore((state) => state.isLoading);
   const [view, setView] = useState<DirectoryView>('categories');
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
 
   const activeCategory = categories.find((category) => category.id === activeCategoryId) ?? null;
   const activeSection = sections.find((section) => section.id === activeSectionId) ?? null;
@@ -204,6 +210,7 @@ const StudentList = () => {
 
   return (
     <div className="space-y-8">
+      {isLoading && <div className="rounded-2xl bg-white p-6 text-sm font-medium text-slate-500 shadow-sm border border-slate-100">Loading student directory...</div>}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Student Directory</h1>

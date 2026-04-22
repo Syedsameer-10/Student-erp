@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   createColumnHelper, 
   flexRender, 
@@ -9,13 +9,12 @@ import {
   getFilteredRowModel,
   type SortingState
 } from '@tanstack/react-table';
-import { mockUsers } from '../../mock-data';
 import { Search, ChevronDown, MoreVertical, Plus, Filter, Mail, Phone, CheckCircle } from 'lucide-react';
 import Modal from '../../components/common/Modal';
+import { useClassStore } from '../../store/useClassStore';
+import type { ITeacher } from '../../types/school';
 
-const teachersData: any[] = mockUsers.filter(u => u.role === 'Teacher');
-
-const columnHelper = createColumnHelper<any>();
+const columnHelper = createColumnHelper<ITeacher>();
 
 const columns = [
   columnHelper.accessor('name', {
@@ -65,11 +64,23 @@ const columns = [
 ];
 
 const TeacherList = () => {
-  const [data, setData] = useState(() => [...teachersData]);
+  const initialize = useClassStore((state) => state.initialize);
+  const teachers = useClassStore((state) => state.teachers);
+  const addTeacher = useClassStore((state) => state.addTeacher);
+  const isLoading = useClassStore((state) => state.isLoading);
+  const [data, setData] = useState<ITeacher[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
+
+  useEffect(() => {
+    setData(teachers);
+  }, [teachers]);
 
   const table = useReactTable({
     data,
@@ -86,20 +97,21 @@ const TeacherList = () => {
     getPaginationRowModel: getPaginationRowModel(),
   });
 
-  const handleAddTeacher = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleAddTeacher = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const newTeacher = {
-      id: `u${mockUsers.length + 1}`,
       name: formData.get('name') as string,
       email: formData.get('email') as string,
-      role: 'Teacher',
+      category: 'secondary',
       subject: formData.get('subject') as string,
-      standards: (formData.get('standards') as string).split(','),
-      classes: (formData.get('standards') as string).split(','),
-      password: "password123"
+      standards: (formData.get('standards') as string).split(',').map((item) => item.trim()),
+      qualification: 'B.Ed',
+      experience: 'New',
+      contact: '+91 0000000000',
+      assignedClass: ((formData.get('standards') as string).split(',').map((item) => item.trim())[0] || '10-A'),
     };
-    setData([newTeacher, ...data]);
+    await addTeacher(newTeacher);
     setIsModalOpen(false);
     setNotification(`${newTeacher.name} has been added to the faculty!`);
     setTimeout(() => setNotification(null), 3000);
@@ -132,6 +144,7 @@ const TeacherList = () => {
       )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        {isLoading && <div className="px-6 py-4 text-sm font-medium text-slate-500 border-b border-slate-100">Loading teachers...</div>}
         {/* Table Toolbar */}
         <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="relative w-full sm:w-80">
