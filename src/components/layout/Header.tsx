@@ -12,6 +12,7 @@ export const Header = ({
 }) => {
   const { user, logout } = useAuthStore();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const teacherSubjects = user?.subjects?.length ? user.subjects.join(', ') : user?.subject;
 
   return (
     <>
@@ -99,7 +100,7 @@ export const Header = ({
                    <div className="p-2.5 bg-white text-amber-600 rounded-xl shadow-sm"><Shield size={20} /></div>
                    <div>
                      <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider leading-none mb-1">Assigned Subject</p>
-                     <p className="text-sm font-semibold text-slate-700">{user?.subject}</p>
+                     <p className="text-sm font-semibold text-slate-700">{teacherSubjects}</p>
                    </div>
                 </div>
              )}

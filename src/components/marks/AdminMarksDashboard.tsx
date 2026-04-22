@@ -1,23 +1,45 @@
-import { useState } from 'react';
-import { EXAM_TYPES, useMarksStore } from '../../store/useMarksStore';
-import type { ExamType } from '../../store/useMarksStore';
+import { useEffect, useMemo, useState } from 'react';
+import { MARK_EXAMS, fetchInstitutionMarks, type ExamType, type StudentMarkRecord } from '../../services/marks';
+import { useClassStore } from '../../store/useClassStore';
 import { Search, FileText, GraduationCap, ChevronDown } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const AdminMarksDashboard = () => {
-  const { marks } = useMarksStore();
+  const sections = useClassStore((state) => state.sections);
   const [selectedClass, setSelectedClass] = useState('All');
   const [selectedExam, setSelectedExam] = useState<ExamType | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [marks, setMarks] = useState<StudentMarkRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredMarks = marks.filter(m => {
-    const matchesClass = selectedClass === 'All' || m.class === selectedClass;
-    const matchesExam = selectedExam === 'All' || m.examType === selectedExam;
-    const matchesSearch = m.studentName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          m.subject.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesClass && matchesExam && matchesSearch;
-  });
+  useEffect(() => {
+    const loadMarks = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const data = await fetchInstitutionMarks({
+          className: selectedClass,
+          examType: selectedExam,
+          search: searchQuery.trim(),
+        });
+        setMarks(data);
+      } catch (loadError: any) {
+        setError(loadError?.message || 'Failed to load marks.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadMarks();
+  }, [searchQuery, selectedClass, selectedExam]);
+
+  const classOptions = useMemo(
+    () => Array.from(new Set(sections.map((section) => section.name))).sort((left, right) => left.localeCompare(right, undefined, { numeric: true })),
+    [sections]
+  );
 
   const generateReport = () => {
     const doc = new jsPDF();
@@ -27,7 +49,13 @@ const AdminMarksDashboard = () => {
     doc.setTextColor(100);
     doc.text(`Generated on: ${new Date().toLocaleString()} | Filters: Class ${selectedClass}, Exam: ${selectedExam}`, 14, 30);
     
-    const tableData = filteredMarks.map(m => [m.studentName, m.class, m.subject, m.examType, `${m.marks}/${m.maxMarks}`]);
+    const tableData = marks.map((mark) => [
+      mark.studentName,
+      mark.className,
+      mark.subject,
+      mark.examType,
+      `${mark.marks}/${mark.maxMarks}`,
+    ]);
     autoTable(doc, {
       head: [['Student', 'Class', 'Subject', 'Exam', 'Marks']],
       body: tableData,
@@ -74,9 +102,9 @@ const AdminMarksDashboard = () => {
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-100 outline-none transition-all appearance-none cursor-pointer font-medium"
           >
             <option value="All">All Classes</option>
-            <option value="10-A">Class 10-A</option>
-            <option value="10-B">Class 10-B</option>
-            <option value="10-C">Class 10-C</option>
+            {classOptions.map((className) => (
+              <option key={className} value={className}>{className}</option>
+            ))}
           </select>
           <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
         </div>
@@ -87,13 +115,19 @@ const AdminMarksDashboard = () => {
             className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-100 outline-none transition-all appearance-none cursor-pointer font-medium"
           >
             <option value="All">All Exams</option>
-            {EXAM_TYPES.map((type) => (
+            {MARK_EXAMS.map((type) => (
               <option key={type} value={type}>{type}</option>
             ))}
           </select>
           <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-medium text-rose-700">
+          {error}
+        </div>
+      )}
 
       <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
         <table className="w-full text-left">
@@ -107,7 +141,7 @@ const AdminMarksDashboard = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {filteredMarks.map((mark) => (
+            {marks.map((mark) => (
               <tr key={mark.id} className="hover:bg-slate-50/50 transition-colors group">
                 <td className="px-8 py-5">
                   <div className="flex items-center gap-3">
@@ -117,7 +151,7 @@ const AdminMarksDashboard = () => {
                     <span className="font-bold text-slate-900">{mark.studentName}</span>
                   </div>
                 </td>
-                <td className="px-8 py-5 font-bold text-slate-500 text-sm">{mark.class}</td>
+                <td className="px-8 py-5 font-bold text-slate-500 text-sm">{mark.className}</td>
                 <td className="px-8 py-5">
                   <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-black uppercase tracking-wider">
                     {mark.subject}
@@ -132,13 +166,20 @@ const AdminMarksDashboard = () => {
                 </td>
               </tr>
             ))}
-            {filteredMarks.length === 0 && (
+            {!isLoading && marks.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-8 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <GraduationCap size={48} className="text-slate-100" />
                     <p className="text-slate-400 font-medium">No Grade reports matching your search</p>
                   </div>
+                </td>
+              </tr>
+            )}
+            {isLoading && (
+              <tr>
+                <td colSpan={5} className="px-8 py-16 text-center text-sm font-medium text-slate-500">
+                  Loading marks from Supabase...
                 </td>
               </tr>
             )}

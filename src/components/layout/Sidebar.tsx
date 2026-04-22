@@ -23,7 +23,6 @@ const getNavItems = (role: string) => {
   if (role === 'Admin') {
     items.push(
       { name: 'Classes Mgmt', icon: Building2, path: '/admin/classes' },
-      { name: 'Attendance', icon: CheckCircle, path: '/admin/attendance' },
       { name: 'Marks Hub', icon: Award, path: '/admin/marks' },
       { name: 'Library', icon: Library, path: '/admin/library' },
       { name: 'Fees & Finance', icon: IndianRupee, path: '/admin/fees' },

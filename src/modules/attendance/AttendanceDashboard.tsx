@@ -68,6 +68,10 @@ const AttendanceDashboard = () => {
       await upsertManualAttendance(selectedClass, attendanceDate, attendanceRows);
       setNotice(`Attendance saved for ${selectedClass} on ${attendanceDate}.`);
       setTimeout(() => setNotice(null), 2500);
+    } catch (error) {
+      console.error('Failed to save attendance:', error);
+      setNotice('Could not save attendance. Please verify attendance permissions and selected class data.');
+      setTimeout(() => setNotice(null), 2500);
     } finally {
       setIsSaving(false);
     }

@@ -8,6 +8,7 @@ import { createAssignment, fetchAssignments, submitAssignment, type Assignment }
 
 const Assignments = () => {
   const { user } = useAuthStore();
+  const teacherSubjects = user?.subjects?.length ? user.subjects : (user?.subject ? [user.subject] : []);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -64,7 +65,7 @@ const Assignments = () => {
     try {
       const created = await createAssignment({
         title: formData.get('title') as string,
-        subject: (user?.subject || formData.get('subject') || 'General') as string,
+        subject: (formData.get('subject') as string) || teacherSubjects[0] || 'General',
         class: formData.get('class') as string,
         deadline: formData.get('deadline') as string,
         description: formData.get('description') as string,
@@ -113,7 +114,7 @@ const Assignments = () => {
     }
 
     try {
-      const submission = await submitAssignment(asgn.id, user.email, 'my_submission.pdf');
+      const submission = await submitAssignment(asgn.id, user.id, user.email, 'my_submission.pdf');
       setAssignments((current) =>
         current.map((item) =>
           item.id === asgn.id
@@ -247,6 +248,14 @@ const Assignments = () => {
                 {visibleClasses.map((className) => <option key={className} value={className}>{className}</option>)}
               </select>
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700">Subject</label>
+              <select name="subject" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all text-sm">
+                {teacherSubjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">Submission Deadline</label>
               <input name="deadline" type="date" required className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm transition-all" />

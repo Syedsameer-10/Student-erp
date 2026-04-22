@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, Loader2, RefreshCcw, Upload } from 'lucide-r
 import { useAttendanceStore } from '../../store/useAttendanceStore';
 import { generateAttendancePreview, saveAttendanceConfirmation } from '../../services/attendance';
 import type { AttendanceValue } from '../../types/attendance';
+import { useAuthStore } from '../../store/useAuthStore';
 
 interface AttendanceRow {
   studentName: string;
@@ -12,6 +13,7 @@ interface AttendanceRow {
 const DEFAULT_DAY_COUNT = 5;
 
 const AIAttendance = () => {
+  const { user } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { addRecords } = useAttendanceStore();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -21,6 +23,7 @@ const AIAttendance = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [selectedClass, setSelectedClass] = useState(user?.classes?.[0] || user?.class || '10-A');
 
   const hasData = rows.length > 0;
 
@@ -108,7 +111,7 @@ const AIAttendance = () => {
 
     try {
       await saveAttendanceConfirmation({
-        sectionId: '10-A',
+        sectionId: selectedClass,
         attendanceDate: new Date().toISOString().split('T')[0],
         students: normalizedRows,
       });
@@ -117,7 +120,7 @@ const AIAttendance = () => {
         normalizedRows.map((row) => ({
           studentId: row.studentName.toLowerCase().replace(/\s+/g, '-'),
           studentName: row.studentName,
-          classId: '10-A',
+          classId: selectedClass,
           date: new Date().toISOString().split('T')[0],
           status: row.attendance[dayCount - 1] === 'P' ? 'Present' : 'Absent',
           source: 'AI' as const,
@@ -151,6 +154,16 @@ const AIAttendance = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <select
+            value={selectedClass}
+            onChange={(event) => setSelectedClass(event.target.value)}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700"
+          >
+            {(user?.classes || [user?.class || '10-A']).map((className) => (
+              <option key={className} value={className}>{className}</option>
+            ))}
+          </select>
+
           <input
             ref={fileInputRef}
             type="file"

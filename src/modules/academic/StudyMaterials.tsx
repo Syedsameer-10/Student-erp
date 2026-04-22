@@ -7,6 +7,7 @@ import { createStudyMaterial, fetchStudyMaterials, type StudyMaterial } from '..
 
 const StudyMaterials = () => {
   const { user } = useAuthStore();
+  const teacherSubjects = user?.subjects?.length ? user.subjects : (user?.subject ? [user.subject] : []);
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -62,7 +63,7 @@ const StudyMaterials = () => {
     try {
       const created = await createStudyMaterial({
         title: formData.get('title') as string,
-        subject: (user?.subject || formData.get('subject') || 'General') as string,
+        subject: (formData.get('subject') as string) || teacherSubjects[0] || 'General',
         class: formData.get('class') as string,
         file: file?.name || 'study_material.pdf',
       });
@@ -173,7 +174,9 @@ const StudyMaterials = () => {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">Subject</label>
-              <input name="subject" defaultValue={user?.subject} readOnly className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-100 text-sm font-bold text-slate-600" />
+              <select name="subject" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all text-sm">
+                {teacherSubjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+              </select>
             </div>
           </div>
           <div className="space-y-2">

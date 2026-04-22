@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Users, Award, CheckCircle, TrendingUp,
   BarChart3, FileText, Search, Shield,
@@ -10,6 +10,7 @@ import {
   XAxis, YAxis, ResponsiveContainer, Legend
 } from 'recharts';
 import { useClassStore } from '../../store/useClassStore';
+import { fetchAttendanceOverview } from '../../services/attendance';
 
 const StatCard = ({ title, value, icon: Icon, bg, color, subtitle }: any) => (
   <div className="bg-white p-5 sm:p-6 rounded-[24px] shadow-sm border border-slate-100 flex items-center gap-4">
@@ -44,6 +45,9 @@ export default function GoverningDashboard() {
   const [teacherSearch, setTeacherSearch] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [filterClass, setFilterClass] = useState('ALL');
+  const [attendanceTrend, setAttendanceTrend] = useState<Array<{ day: string; present: number; absent: number }>>([]);
+  const [classAttendance, setClassAttendance] = useState<Array<{ class: string; pct: number }>>([]);
+  const [pieData, setPieData] = useState([{ name: 'Present', value: 0 }, { name: 'Absent', value: 0 }]);
 
   const navItems: { id: Tab; label: string; icon: any }[] = [
     { id: 'OVERVIEW', label: 'Overview', icon: BarChart3 },
@@ -68,24 +72,29 @@ export default function GoverningDashboard() {
 
   const sectionLookup = useMemo(() => new Map(store.sections.map((section) => [section.id, section])), [store.sections]);
 
-  const classAttendance = useMemo(() => store.categories.map((category) => {
-    const totalStudents = store.students.filter((student) => student.categoryId === category.id).length;
-    const weightedAttendance = totalStudents ? 84 + Math.min(totalStudents, 12) : 0;
-
-    return {
-      class: category.name,
-      pct: weightedAttendance,
-    };
-  }), [store.categories, store.students]);
-
-  const attendanceTrend = [
-    { day: 'Mon', present: 91, absent: 9 },
-    { day: 'Tue', present: 89, absent: 11 },
-    { day: 'Wed', present: 94, absent: 6 },
-    { day: 'Thu', present: 90, absent: 10 },
-    { day: 'Fri', present: 92, absent: 8 },
-    { day: 'Sat', present: 87, absent: 13 },
-  ];
+  useEffect(() => {
+    void fetchAttendanceOverview(7)
+      .then((overview) => {
+        setAttendanceTrend(
+          overview.trend.map((point) => ({
+            day: point.label,
+            present: point.present,
+            absent: point.absent,
+          }))
+        );
+        setClassAttendance(
+          overview.classBreakdown.map((point) => ({
+            class: point.classId,
+            pct: point.pct,
+          }))
+        );
+        setPieData([
+          { name: 'Present', value: overview.presentCount },
+          { name: 'Absent', value: overview.absentCount },
+        ]);
+      })
+      .catch(console.error);
+  }, []);
 
   const marksData = store.categories.map((category, index) => ({
     subject: category.name.length > 9 ? `${category.name.slice(0, 8)}.` : category.name,
@@ -97,11 +106,6 @@ export default function GoverningDashboard() {
     done: 76 + index * 4,
     pending: 24 - index * 4,
   }));
-
-  const pieData = [
-    { name: 'Present', value: 90 },
-    { name: 'Absent', value: 10 },
-  ];
 
   const studentHighlights = useMemo(() => store.students.slice(0, 6), [store.students]);
 

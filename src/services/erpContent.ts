@@ -14,6 +14,7 @@ export interface Assignment {
 export interface AssignmentSubmission {
   id: string;
   assignment_id: string;
+  student_id?: string | null;
   student_email: string;
   submitted_at: string;
   file_name: string;
@@ -53,6 +54,11 @@ export interface FeeRecord {
   id: string;
   studentId: string;
   studentEmail: string;
+  studentName?: string;
+  rollNo?: string;
+  categoryId?: string;
+  sectionId?: string;
+  sectionName?: string;
   totalAmount: number;
   paidAmount: number;
   pendingAmount: number;
@@ -73,7 +79,7 @@ export const fetchAssignments = async (classNames?: string[]) => {
   const client = assertSupabase();
   let query = client
     .from('assignments')
-    .select('id, title, subject, class_name, deadline, description, teacher_id, assignment_submissions(id, assignment_id, student_email, submitted_at, file_name)')
+    .select('id, title, subject, class_name, deadline, description, teacher_id, assignment_submissions(id, assignment_id, student_id, student_email, submitted_at, file_name)')
     .order('deadline', { ascending: true });
 
   if (classNames?.length) {
@@ -94,6 +100,7 @@ export const fetchAssignments = async (classNames?: string[]) => {
     submissions: (row.assignment_submissions || []).map((submission: any) => ({
       id: submission.id,
       assignment_id: submission.assignment_id,
+      student_id: submission.student_id,
       student_email: submission.student_email,
       submitted_at: submission.submitted_at,
       file_name: submission.file_name,
@@ -130,17 +137,18 @@ export const createAssignment = async (assignment: Omit<Assignment, 'id' | 'subm
   } as Assignment;
 };
 
-export const submitAssignment = async (assignmentId: string, studentEmail: string, fileName: string) => {
+export const submitAssignment = async (assignmentId: string, studentId: string, studentEmail: string, fileName: string) => {
   const client = assertSupabase();
   const { data, error } = await client
     .from('assignment_submissions')
     .insert({
       assignment_id: assignmentId,
+      student_id: studentId,
       student_email: studentEmail,
       submitted_at: new Date().toISOString().split('T')[0],
       file_name: fileName,
     })
-    .select('id, assignment_id, student_email, submitted_at, file_name')
+    .select('id, assignment_id, student_id, student_email, submitted_at, file_name')
     .single();
 
   if (error) throw error;
@@ -245,6 +253,41 @@ export const createEvent = async (event: Omit<SchoolEvent, 'id'>) => {
   } as SchoolEvent;
 };
 
+export const updateEvent = async (id: string, event: Omit<SchoolEvent, 'id'>) => {
+  const client = assertSupabase();
+  const { data, error } = await client
+    .from('events')
+    .update({
+      name: event.name,
+      date: event.date,
+      description: event.description,
+      type: event.type,
+      target_audience: event.targetAudience,
+      status: event.status,
+    })
+    .eq('id', id)
+    .select('id, name, date, description, type, target_audience, status')
+    .single();
+
+  if (error) throw error;
+
+  return {
+    id: data.id,
+    name: data.name,
+    date: data.date,
+    description: data.description,
+    type: data.type,
+    targetAudience: data.target_audience,
+    status: data.status,
+  } as SchoolEvent;
+};
+
+export const deleteEvent = async (id: string) => {
+  const client = assertSupabase();
+  const { error } = await client.from('events').delete().eq('id', id);
+  if (error) throw error;
+};
+
 export const fetchBooks = async () => {
   const client = assertSupabase();
   const { data, error } = await client
@@ -319,7 +362,26 @@ export const fetchFeeRecords = async (studentEmail?: string) => {
   const client = assertSupabase();
   let query = client
     .from('fee_records')
-    .select('id, student_id, student_email, total_amount, paid_amount, pending_amount, due_date, type, status')
+    .select(`
+      id,
+      student_id,
+      student_email,
+      total_amount,
+      paid_amount,
+      pending_amount,
+      due_date,
+      type,
+      status,
+      students (
+        name,
+        roll_no,
+        category_id,
+        section_id,
+        sections (
+          name
+        )
+      )
+    `)
     .order('due_date', { ascending: true });
 
   if (studentEmail) {
@@ -333,6 +395,11 @@ export const fetchFeeRecords = async (studentEmail?: string) => {
     id: row.id,
     studentId: row.student_id,
     studentEmail: row.student_email,
+    studentName: row.students?.name,
+    rollNo: row.students?.roll_no,
+    categoryId: row.students?.category_id,
+    sectionId: row.students?.section_id,
+    sectionName: row.students?.sections?.name,
     totalAmount: row.total_amount,
     paidAmount: row.paid_amount,
     pendingAmount: row.pending_amount,

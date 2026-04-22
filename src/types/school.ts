@@ -4,6 +4,7 @@ export interface ITeacher {
   name: string;
   category: string;
   subject: string;
+  subjects?: string[];
   qualification: string;
   experience: string;
   contact: string;

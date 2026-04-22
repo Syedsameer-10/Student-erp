@@ -14,6 +14,8 @@ import LibraryDashboard from './modules/library/LibraryDashboard';
 import FinanceDashboard from './modules/finance/FinanceDashboard';
 import EventDashboard from './modules/events/EventDashboard';
 import StudentList from './modules/students/StudentList';
+import TeacherList from './modules/teachers/TeacherList';
+import TeacherClasses from './modules/teachers/TeacherClasses';
 import ClassesDashboard from './modules/classes/ClassesDashboard';
 import ReportsPage from './modules/reports/ReportsPage';
 import SettingsPage from './modules/settings/SettingsPage';
@@ -81,9 +83,9 @@ function App() {
           <Route path="/governing/dashboard" element={<ProtectedRoute allowedRoles={['Governing Body']}><GoverningDashboard /></ProtectedRoute>} />
           {/* --- Admin Routes --- */}
           <Route path="/admin/classes" element={<ProtectedRoute allowedRoles={['Admin']}><ClassesDashboard /></ProtectedRoute>} />
-          <Route path="/admin/students" element={<Navigate to="/admin/classes" replace />} />
-          <Route path="/admin/teachers" element={<Navigate to="/admin/classes" replace />} />
-          <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['Admin']}><AttendanceDashboard /></ProtectedRoute>} />
+          <Route path="/admin/students" element={<ProtectedRoute allowedRoles={['Admin']}><StudentList /></ProtectedRoute>} />
+          <Route path="/admin/teachers" element={<ProtectedRoute allowedRoles={['Admin']}><TeacherList /></ProtectedRoute>} />
+          <Route path="/admin/attendance" element={<Navigate to="/admin/dashboard" replace />} />
           <Route path="/admin/library" element={<ProtectedRoute allowedRoles={['Admin']}><LibraryDashboard /></ProtectedRoute>} />
           <Route path="/admin/fees" element={<ProtectedRoute allowedRoles={['Admin']}><FinanceDashboard /></ProtectedRoute>} />
           <Route path="/admin/events" element={<ProtectedRoute allowedRoles={['Admin']}><EventDashboard /></ProtectedRoute>} />
@@ -93,7 +95,7 @@ function App() {
           <Route path="/admin/marks" element={<ProtectedRoute allowedRoles={['Admin']}><div className="p-8"><AdminMarksDashboard /></div></ProtectedRoute>} />
 
           {/* --- Teacher Routes --- */}
-          <Route path="/teacher/classes" element={<ProtectedRoute allowedRoles={['Teacher']}><StudentList /></ProtectedRoute>} />
+          <Route path="/teacher/classes" element={<ProtectedRoute allowedRoles={['Teacher']}><TeacherClasses /></ProtectedRoute>} />
           <Route path="/teacher/attendance" element={<ProtectedRoute allowedRoles={['Teacher']}><AttendanceDashboard /></ProtectedRoute>} />
           <Route path="/teacher/ai-attendance" element={<ProtectedRoute allowedRoles={['Teacher']}><div className="p-8"><AIAttendance /></div></ProtectedRoute>} />
           <Route path="/teacher/marks-entry" element={<ProtectedRoute allowedRoles={['Teacher']}><div className="p-8"><MarksEntry /></div></ProtectedRoute>} />

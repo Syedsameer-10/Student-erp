@@ -33,7 +33,10 @@ const columns = [
   }),
   columnHelper.accessor('subject', {
     header: 'Subject',
-    cell: info => <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-semibold">{info.getValue() || 'General'}</span>,
+    cell: info => {
+      const subjects = info.row.original.subjects?.length ? info.row.original.subjects : [info.getValue()];
+      return <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-semibold">{subjects.filter(Boolean).join(', ') || 'General'}</span>;
+    },
   }),
   columnHelper.accessor('standards', {
     header: 'Classes Assigned',
@@ -66,11 +69,13 @@ const columns = [
 const TeacherList = () => {
   const initialize = useClassStore((state) => state.initialize);
   const teachers = useClassStore((state) => state.teachers);
+  const categories = useClassStore((state) => state.categories);
   const addTeacher = useClassStore((state) => state.addTeacher);
   const isLoading = useClassStore((state) => state.isLoading);
   const [data, setData] = useState<ITeacher[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -79,8 +84,10 @@ const TeacherList = () => {
   }, [initialize]);
 
   useEffect(() => {
-    setData(teachers);
-  }, [teachers]);
+    setData(
+      teachers.filter((teacher) => categoryFilter === 'ALL' || teacher.category === categoryFilter)
+    );
+  }, [categoryFilter, teachers]);
 
   const table = useReactTable({
     data,
@@ -157,6 +164,16 @@ const TeacherList = () => {
             />
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
+            <select
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter(event.target.value)}
+              className="flex-1 sm:flex-none px-4 py-2 text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-sm font-medium transition-colors"
+            >
+              <option value="ALL">All Levels</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
             <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-sm font-medium transition-colors">
               <Filter size={16} /> Filter
             </button>

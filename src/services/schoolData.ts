@@ -23,6 +23,7 @@ interface TeacherRow {
   name: string;
   category_id: string;
   subject: string;
+  subjects: string[] | null;
   qualification: string;
   experience: string;
   contact: string;
@@ -77,6 +78,7 @@ const mapTeacher = (row: TeacherRow): ITeacher => ({
   name: row.name,
   category: row.category_id,
   subject: row.subject,
+  subjects: row.subjects || (row.subject ? [row.subject] : []),
   qualification: row.qualification,
   experience: row.experience,
   contact: row.contact,
@@ -106,7 +108,7 @@ export const fetchSchoolData = async () => {
   const [categoriesRes, sectionsRes, teachersRes, studentsRes] = await Promise.all([
     client.from('class_categories').select('id, name, description, icon').order('id', { ascending: true }),
     client.from('sections').select('id, category_id, name, class_teacher, strength, room_number').order('name', { ascending: true }),
-    client.from('teachers').select('id, profile_id, name, category_id, subject, qualification, experience, contact, email, assigned_class, standards').order('name', { ascending: true }),
+    client.from('teachers').select('id, profile_id, name, category_id, subject, subjects, qualification, experience, contact, email, assigned_class, standards').order('name', { ascending: true }),
     client.from('students').select('id, profile_id, name, email, roll_no, category_id, section_id, gender, dob, contact, parent_name, parent_contact, address').order('roll_no', { ascending: true }),
   ]);
 
@@ -156,6 +158,7 @@ export const createTeacherRecord = async (teacher: Omit<ITeacher, 'id'>) => {
       name: teacher.name,
       category_id: teacher.category,
       subject: teacher.subject,
+      subjects: teacher.subjects || (teacher.subject ? [teacher.subject] : []),
       qualification: teacher.qualification,
       experience: teacher.experience,
       contact: teacher.contact,
@@ -163,7 +166,7 @@ export const createTeacherRecord = async (teacher: Omit<ITeacher, 'id'>) => {
       assigned_class: teacher.assignedClass,
       standards: teacher.standards || [],
     })
-    .select('id, profile_id, name, category_id, subject, qualification, experience, contact, email, assigned_class, standards')
+    .select('id, profile_id, name, category_id, subject, subjects, qualification, experience, contact, email, assigned_class, standards')
     .single<TeacherRow>();
 
   if (error) throw error;
@@ -240,7 +243,7 @@ export const fetchTeacherByProfile = async (profileId: string) => {
   const client = assertSupabase();
   const { data, error } = await client
     .from('teachers')
-    .select('id, profile_id, name, category_id, subject, qualification, experience, contact, email, assigned_class, standards')
+    .select('id, profile_id, name, category_id, subject, subjects, qualification, experience, contact, email, assigned_class, standards')
     .eq('profile_id', profileId)
     .maybeSingle<TeacherRow>();
 

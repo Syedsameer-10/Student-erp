@@ -1,67 +1,76 @@
 import { useEffect, useMemo, useState } from 'react';
-import { EXAM_TYPES, useMarksStore } from '../../store/useMarksStore';
-import type { ExamType } from '../../store/useMarksStore';
-import { useAuthStore } from '../../store/useAuthStore';
 import { Search, CheckCircle, AlertCircle, Users, BookOpen, GraduationCap } from 'lucide-react';
-import { useClassStore } from '../../store/useClassStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { fetchSubjectsForClass, fetchTeacherMarkSheet, MARK_EXAMS, upsertStudentMark, type ExamType, type TeacherMarkSheetRow } from '../../services/marks';
 
 const MarksEntry = () => {
   const { user } = useAuthStore();
-  const initialize = useClassStore((state) => state.initialize);
-  const sections = useClassStore((state) => state.sections);
-  const studentsData = useClassStore((state) => state.students);
-  const { addMark, marks, updateMark } = useMarksStore();
-  const [selectedClass, setSelectedClass] = useState(user?.classes?.[0] || '10-A');
-  const [selectedSubject] = useState(user?.subject || 'Mathematics');
-  const [examType, setExamType] = useState<ExamType>('Unit Test');
+  const allowedClasses = user?.classes || [];
+  const allowedSubjects = user?.subjects?.length ? user.subjects : (user?.subject ? [user.subject] : []);
+  const [selectedClass, setSelectedClass] = useState(allowedClasses[0] || '');
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState(allowedSubjects[0] || '');
+  const [examType, setExamType] = useState<ExamType>('Quarterly');
+  const [rows, setRows] = useState<TeacherMarkSheetRow[]>([]);
   const [notification, setNotification] = useState<string | null>(null);
 
   useEffect(() => {
-    void initialize();
-  }, [initialize]);
-
-  const students = useMemo(() => {
-    const section = sections.find((item) => item.name === selectedClass);
-    return section ? studentsData.filter((student) => student.sectionId === section.id) : [];
-  }, [sections, selectedClass, studentsData]);
-
-  const handleSaveMarks = (studentId: string, studentName: string, value: string) => {
-    const markValue = parseInt(value);
-    if (isNaN(markValue) || markValue < 0 || markValue > 100) return;
-
-    const existingMark = marks.find(m => 
-      m.studentId === studentId && 
-      m.subject === selectedSubject && 
-      m.examType === examType
-    );
-
-    if (existingMark) {
-      updateMark(existingMark.id, { marks: markValue });
-    } else {
-      addMark({
-        studentId,
-        studentName,
-        class: selectedClass,
-        subject: selectedSubject,
-        marks: markValue,
-        maxMarks: 100,
-        examType,
-        teacherId: user?.id || 'unknown'
-      });
+    if (!selectedClass) {
+      return;
     }
 
+    void fetchSubjectsForClass(selectedClass)
+      .then((items) => {
+        const filtered = allowedSubjects.length ? items.filter((item) => allowedSubjects.includes(item)) : items;
+        setSubjects(filtered);
+        setSelectedSubject((current) => current && filtered.includes(current) ? current : (filtered[0] || allowedSubjects[0] || ''));
+      })
+      .catch(console.error);
+  }, [allowedSubjects, selectedClass]);
+
+  useEffect(() => {
+    if (!selectedClass || !selectedSubject) {
+      return;
+    }
+
+    void fetchTeacherMarkSheet(selectedClass, selectedSubject, examType)
+      .then(setRows)
+      .catch(console.error);
+  }, [examType, selectedClass, selectedSubject]);
+
+  const handleSaveMarks = async (studentId: string, studentName: string, sectionId: string, value: string) => {
+    const markValue = parseInt(value, 10);
+    if (isNaN(markValue) || markValue < 0 || markValue > 100 || !selectedSubject) {
+      return;
+    }
+
+    await upsertStudentMark({
+      studentId,
+      studentName,
+      sectionId,
+      className: selectedClass,
+      subject: selectedSubject,
+      examType,
+      marks: markValue,
+      maxMarks: 100,
+      teacherProfileId: user?.id,
+    });
+
+    setRows((current) => current.map((row) => row.studentId === studentId ? { ...row, marks: markValue } : row));
     setNotification(`Marks updated for ${studentName}`);
     setTimeout(() => setNotification(null), 2000);
   };
+
+  const visibleRows = useMemo(() => rows, [rows]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Marks Entry</h2>
-          <p className="text-slate-500 text-sm">Update and manage student grades for your subjects</p>
+          <p className="text-slate-500 text-sm">Update and manage student grades only for your assigned classes and subject.</p>
         </div>
-        
+
         {notification && (
           <div className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl border border-emerald-100 flex items-center gap-2 animate-in fade-in slide-in-from-right-4">
             <CheckCircle size={16} />
@@ -75,13 +84,13 @@ const MarksEntry = () => {
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
             <Users size={14} /> Select Class
           </label>
-          <select 
+          <select
             value={selectedClass}
-            onChange={e => setSelectedClass(e.target.value)}
+            onChange={(e) => setSelectedClass(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 outline-none transition-all bg-slate-50/50"
           >
-            {sections.map((section) => (
-              <option key={section.id} value={section.name}>Class {section.name}</option>
+            {allowedClasses.map((className) => (
+              <option key={className} value={className}>Class {className}</option>
             ))}
           </select>
         </div>
@@ -89,28 +98,34 @@ const MarksEntry = () => {
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
             <BookOpen size={14} /> Subject
           </label>
-          <div className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-bold block">
-            {selectedSubject}
-          </div>
+          <select
+            value={selectedSubject}
+            onChange={(e) => setSelectedSubject(e.target.value)}
+            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 outline-none transition-all bg-slate-50/50"
+          >
+            {subjects.map((subject) => (
+              <option key={subject} value={subject}>{subject}</option>
+            ))}
+          </select>
         </div>
         <div className="space-y-2">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
             <GraduationCap size={14} /> Exam Type
           </label>
-          <select 
+          <select
             value={examType}
-            onChange={e => setExamType(e.target.value as ExamType)}
+            onChange={(e) => setExamType(e.target.value as ExamType)}
             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 outline-none transition-all bg-slate-50/50"
           >
-            {EXAM_TYPES.map((type) => (
+            {MARK_EXAMS.map((type) => (
               <option key={type} value={type}>{type}</option>
             ))}
           </select>
         </div>
         <div className="flex items-end">
-           <button className="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2">
-             <Search size={18} /> Load Students
-           </button>
+          <button className="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2">
+            <Search size={18} /> Load Students
+          </button>
         </div>
       </div>
 
@@ -125,52 +140,51 @@ const MarksEntry = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {students.map(student => {
-              const markRecord = marks.find(m => 
-                m.studentId === student.id && 
-                m.subject === selectedSubject && 
-                m.examType === examType
-              );
-              
-              return (
-                <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-8 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs uppercase">
-                        {student.name.charAt(0)}
-                      </div>
-                      <span className="font-bold text-slate-900">{student.name}</span>
+            {visibleRows.map((student) => (
+              <tr key={student.studentId} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-8 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs uppercase">
+                      {student.studentName.charAt(0)}
                     </div>
-                  </td>
-                  <td className="px-8 py-4 text-slate-500 font-medium">#{student.rollNo}</td>
-                  <td className="px-8 py-4">
-                    <div className="relative max-w-[120px]">
-                      <input 
-                        type="number"
-                        defaultValue={markRecord?.marks || ''}
-                        onBlur={(e) => handleSaveMarks(student.id, student.name, e.target.value)}
-                        className="w-full pl-4 pr-10 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 outline-none font-bold text-slate-900"
-                        placeholder="00"
-                        min="0"
-                        max="100"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">/ 100</span>
-                    </div>
-                  </td>
-                  <td className="px-8 py-4 text-center">
-                    {markRecord ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider">
-                        <CheckCircle size={10} /> Saved
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider">
-                        <AlertCircle size={10} /> Pending
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+                    <span className="font-bold text-slate-900">{student.studentName}</span>
+                  </div>
+                </td>
+                <td className="px-8 py-4 text-slate-500 font-medium">#{student.rollNo}</td>
+                <td className="px-8 py-4">
+                  <div className="relative max-w-[120px]">
+                    <input
+                      type="number"
+                      defaultValue={student.marks ?? ''}
+                      onBlur={(e) => void handleSaveMarks(student.studentId, student.studentName, student.sectionId, e.target.value)}
+                      className="w-full pl-4 pr-10 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 outline-none font-bold text-slate-900"
+                      placeholder="00"
+                      min="0"
+                      max="100"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">/ 100</span>
+                  </div>
+                </td>
+                <td className="px-8 py-4 text-center">
+                  {typeof student.marks === 'number' ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider">
+                      <CheckCircle size={10} /> Saved
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider">
+                      <AlertCircle size={10} /> Pending
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {visibleRows.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-8 py-12 text-center text-slate-500 font-medium">
+                  No students or marks found for your assigned class/subject selection.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

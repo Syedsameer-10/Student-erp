@@ -1,6 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
-import { useLeaveStore } from '../../store/useLeaveStore';
-import type { LeaveRequest } from '../../store/useLeaveStore';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calendar,
   CheckCircle2,
@@ -10,18 +8,51 @@ import {
   Search,
   XCircle,
 } from 'lucide-react';
-import { cn } from '../../components/layout/Sidebar';
 import { format, parseISO } from 'date-fns';
+import { cn } from '../../components/layout/Sidebar';
+import { fetchTeacherLeaveRequests, updateLeaveRequestStatus, type LeaveRequestRecord } from '../../services/leave';
 
 const LeaveRequestList = () => {
-  const { requests, updateStatus } = useLeaveStore();
-  const [filterStatus, setFilterStatus] = useState<LeaveRequest['status'] | 'All'>('All');
+  const [requests, setRequests] = useState<LeaveRequestRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<LeaveRequestRecord['status'] | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const pendingSectionRef = useRef<HTMLDivElement | null>(null);
   const currentMonthKey = format(new Date(), 'MMMM yyyy');
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({
     [currentMonthKey]: true,
   });
+
+  useEffect(() => {
+    let active = true;
+
+    const loadRequests = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const data = await fetchTeacherLeaveRequests();
+        if (active) {
+          setRequests(data);
+        }
+      } catch (loadError: any) {
+        if (active) {
+          setError(loadError?.message || 'Unable to load leave requests.');
+        }
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadRequests();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const filteredRequests = useMemo(
     () =>
@@ -33,7 +64,7 @@ const LeaveRequestList = () => {
             request.reason.toLowerCase().includes(searchQuery.toLowerCase());
           return matchesStatus && matchesSearch;
         })
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+        .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime()),
     [requests, filterStatus, searchQuery]
   );
 
@@ -42,7 +73,7 @@ const LeaveRequestList = () => {
   const groupedRequests = useMemo(() => {
     const grouped = filteredRequests
       .filter((request) => request.status !== 'Pending')
-      .reduce<Record<string, LeaveRequest[]>>((acc, request) => {
+      .reduce<Record<string, LeaveRequestRecord[]>>((acc, request) => {
         const monthKey = format(parseISO(request.timestamp), 'MMMM yyyy');
         acc[monthKey] = [...(acc[monthKey] || []), request];
         return acc;
@@ -66,17 +97,23 @@ const LeaveRequestList = () => {
 
   const isMonthExpanded = (monthKey: string) => expandedMonths[monthKey] ?? monthKey === currentMonthKey;
 
-  const handleDecision = (requestId: string, status: LeaveRequest['status']) => {
+  const handleDecision = async (requestId: string, status: LeaveRequestRecord['status']) => {
     const remarks = (document.getElementById(`remarks-${requestId}`) as HTMLTextAreaElement | null)?.value;
-    updateStatus(requestId, status, remarks || undefined);
+
+    try {
+      const updated = await updateLeaveRequestStatus(requestId, status, remarks || undefined);
+      setRequests((current) => current.map((request) => request.id === requestId ? updated : request));
+    } catch (updateError: any) {
+      setError(updateError?.message || 'Unable to update leave request.');
+    }
   };
 
-  const renderRequestCard = (request: LeaveRequest, highlighted = false) => (
+  const renderRequestCard = (request: LeaveRequestRecord, highlighted = false) => (
     <div
       key={request.id}
       className={cn(
-        "bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all group",
-        highlighted && "border-amber-200 bg-amber-50/40"
+        'bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all group',
+        highlighted && 'border-amber-200 bg-amber-50/40'
       )}
     >
       <div className="flex flex-col lg:flex-row gap-6">
@@ -85,8 +122,8 @@ const LeaveRequestList = () => {
             <div className="flex items-center gap-3">
               <div
                 className={cn(
-                  "w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg",
-                  highlighted ? "bg-amber-100 text-amber-700" : "bg-indigo-50 text-indigo-600"
+                  'w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg',
+                  highlighted ? 'bg-amber-100 text-amber-700' : 'bg-indigo-50 text-indigo-600'
                 )}
               >
                 {request.studentName.charAt(0)}
@@ -100,12 +137,12 @@ const LeaveRequestList = () => {
             </div>
             <div
               className={cn(
-                "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                'px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider',
                 request.status === 'Pending'
-                  ? "bg-amber-100 text-amber-700"
+                  ? 'bg-amber-100 text-amber-700'
                   : request.status === 'Approved'
-                    ? "bg-emerald-50 text-emerald-600"
-                    : "bg-rose-50 text-rose-600"
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : 'bg-rose-50 text-rose-600'
               )}
             >
               {request.status}
@@ -133,6 +170,8 @@ const LeaveRequestList = () => {
             <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Reason</p>
             <p className="text-sm text-slate-600 leading-relaxed font-medium">{request.reason}</p>
           </div>
+
+          <div className="text-xs font-semibold text-slate-500">Assigned To: {request.teacherName}</div>
         </div>
 
         {request.status === 'Pending' && (
@@ -145,14 +184,14 @@ const LeaveRequestList = () => {
             />
             <div className="flex gap-2">
               <button
-                onClick={() => handleDecision(request.id, 'Approved')}
+                onClick={() => void handleDecision(request.id, 'Approved')}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 transition-all text-xs"
               >
                 <CheckCircle2 size={14} />
                 Approve
               </button>
               <button
-                onClick={() => handleDecision(request.id, 'Rejected')}
+                onClick={() => void handleDecision(request.id, 'Rejected')}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 bg-white text-rose-600 border border-rose-100 font-bold rounded-xl hover:bg-rose-50 transition-all text-xs"
               >
                 <XCircle size={14} />
@@ -167,10 +206,16 @@ const LeaveRequestList = () => {
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-medium text-rose-700">
+          {error}
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Leave Requests</h2>
-          <p className="text-slate-500 text-sm">Review student applications and historical data</p>
+          <p className="text-slate-500 text-sm">Only leave requests assigned to you are visible here.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -180,7 +225,7 @@ const LeaveRequestList = () => {
               type="text"
               placeholder="Search students..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(event) => setSearchQuery(event.target.value)}
               className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none text-sm w-full md:w-64"
             />
           </div>
@@ -191,10 +236,10 @@ const LeaveRequestList = () => {
                 key={status}
                 onClick={() => setFilterStatus(status)}
                 className={cn(
-                  "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+                  'px-4 py-1.5 rounded-lg text-xs font-bold transition-all',
                   filterStatus === status
-                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                 )}
               >
                 {status}
@@ -217,7 +262,11 @@ const LeaveRequestList = () => {
       )}
 
       <div className="grid grid-cols-1 gap-4">
-        {filteredRequests.length > 0 ? (
+        {isLoading ? (
+          <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-center text-sm font-medium text-slate-500">
+            Loading leave applications from Supabase...
+          </div>
+        ) : filteredRequests.length > 0 ? (
           <>
             {pendingRequests.length > 0 && (
               <section ref={pendingSectionRef} className="space-y-4">
@@ -254,8 +303,8 @@ const LeaveRequestList = () => {
                     <ChevronDown
                       size={18}
                       className={cn(
-                        "text-slate-400 transition-transform",
-                        isMonthExpanded(monthKey) && "rotate-180"
+                        'text-slate-400 transition-transform',
+                        isMonthExpanded(monthKey) && 'rotate-180'
                       )}
                     />
                   </div>

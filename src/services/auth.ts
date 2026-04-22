@@ -12,6 +12,7 @@ export interface AuthenticatedUser {
   standards?: string[];
   classes?: string[];
   subject?: string;
+  subjects?: string[];
 }
 
 interface ProfileRow {
@@ -25,6 +26,7 @@ interface ProfileRow {
   standards: string[] | null;
   classes: string[] | null;
   subject: string | null;
+  subjects: string[] | null;
 }
 
 const assertSupabase = () => {
@@ -45,14 +47,15 @@ const mapProfileToUser = (session: Session, profile: ProfileRow | null): Authent
   section: profile?.section || undefined,
   standards: profile?.standards || undefined,
   classes: profile?.classes || undefined,
-  subject: profile?.subject || undefined,
+  subject: profile?.subject || profile?.subjects?.[0] || undefined,
+  subjects: profile?.subjects || (profile?.subject ? [profile.subject] : undefined),
 });
 
 const getSessionProfile = async (session: Session): Promise<AuthenticatedUser> => {
   const client = assertSupabase();
   const { data, error } = await client
     .from('profiles')
-    .select('id, name, email, role, standard, class_name, section, standards, classes, subject')
+    .select('id, name, email, role, standard, class_name, section, standards, classes, subject, subjects')
     .eq('id', session.user.id)
     .maybeSingle<ProfileRow>();
 

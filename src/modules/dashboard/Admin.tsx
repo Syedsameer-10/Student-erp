@@ -1,27 +1,12 @@
 import { Users, IndianRupee, TrendingUp, Bell, FileText, Building2, Shield } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { useAuthStore } from '../../store/useAuthStore';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useClassStore } from '../../store/useClassStore';
 import { useComplaintStore } from '../../store/useComplaintStore';
 import { fetchComplaints } from '../../services/complaints';
-
-const attendanceData = [
-  { name: 'Mon', present: 95, absent: 5 },
-  { name: 'Tue', present: 92, absent: 8 },
-  { name: 'Wed', present: 94, absent: 6 },
-  { name: 'Thu', present: 90, absent: 10 },
-  { name: 'Fri', present: 93, absent: 7 },
-  { name: 'Sat', present: 85, absent: 15 },
-];
-
-const gradeData = [
-  { name: '10th', avg: 85 },
-  { name: '9th', avg: 82 },
-  { name: '8th', avg: 78 },
-  { name: '7th', avg: 80 },
-];
+import { fetchAttendanceOverview } from '../../services/attendance';
 
 const AdminDashboard = () => {
   const { user } = useAuthStore();
@@ -32,11 +17,44 @@ const AdminDashboard = () => {
   const complaints = useComplaintStore((state) => state.complaints);
   const setComplaints = useComplaintStore((state) => state.setComplaints);
   const navigate = useNavigate();
+  const [attendanceData, setAttendanceData] = useState<Array<{ name: string; present: number; absent: number }>>([]);
+  const [standardAttendanceData, setStandardAttendanceData] = useState<Array<{ name: string; avg: number }>>([]);
 
   useEffect(() => {
     void initialize();
     void fetchComplaints().then(setComplaints).catch(console.error);
-  }, [initialize, setComplaints]);
+    void fetchAttendanceOverview(7)
+      .then((overview) => {
+        setAttendanceData(
+          overview.trend.map((point) => ({
+            name: point.label,
+            present: point.present,
+            absent: point.absent,
+          }))
+        );
+        setStandardAttendanceData(
+          categories.map((category) => {
+            const matchingSections = new Set(
+              useClassStore
+                .getState()
+                .sections
+                .filter((section) => section.categoryId === category.id)
+                .map((section) => section.name)
+            );
+            const matchingPoints = overview.classBreakdown.filter((point) => matchingSections.has(point.classId));
+            const avg = matchingPoints.length
+              ? Math.round(matchingPoints.reduce((sum, point) => sum + point.pct, 0) / matchingPoints.length)
+              : 0;
+
+            return {
+              name: category.name,
+              avg,
+            };
+          })
+        );
+      })
+      .catch(console.error);
+  }, [categories, initialize, setComplaints]);
 
   const totalStudents = students.length;
   const totalTeachers = teachers.length;
@@ -59,8 +77,8 @@ const AdminDashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { title: 'Academic Classes', value: `${categories.length} Levels`, icon: Building2, color: 'bg-indigo-600', trend: 'Live from Supabase', path: '/admin/classes' },
-          { title: 'Total Teachers', value: totalTeachers.toString(), icon: Shield, color: 'bg-emerald-600', trend: 'Faculty records in DB', path: '/admin/classes' },
-          { title: 'Total Students', value: totalStudents.toString(), icon: Users, color: 'bg-blue-600', trend: 'Enrollment records in DB', path: '/admin/classes' },
+          { title: 'Total Teachers', value: totalTeachers.toString(), icon: Shield, color: 'bg-emerald-600', trend: 'Faculty records in DB', path: '/admin/teachers' },
+          { title: 'Total Students', value: totalStudents.toString(), icon: Users, color: 'bg-blue-600', trend: 'Enrollment records in DB', path: '/admin/students' },
           { title: 'Finance Overview', value: 'Active', icon: IndianRupee, color: 'bg-rose-600', trend: 'Fees tracking enabled', path: '/admin/fees' },
         ].map((stat, i) => (
           <div
@@ -109,10 +127,10 @@ const AdminDashboard = () => {
 
         {/* Secondary Chart */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h2 className="text-lg font-semibold text-slate-900 mb-6">Performance By Standard</h2>
+          <h2 className="text-lg font-semibold text-slate-900 mb-6">Attendance By Level</h2>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={gradeData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
+              <BarChart data={standardAttendanceData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />

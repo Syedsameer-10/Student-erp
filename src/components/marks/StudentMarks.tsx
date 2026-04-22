@@ -1,41 +1,53 @@
-import { useState } from 'react';
-import { EXAM_TYPES, useMarksStore } from '../../store/useMarksStore';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { TrendingUp, BookOpen, Award, BarChart3, ChevronRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import type { ExamType } from '../../store/useMarksStore';
+import { MARK_EXAMS, fetchStudentMarksByProfile, type ExamType } from '../../services/marks';
 
 const StudentMarks = () => {
   const { user } = useAuthStore();
-  const { marks } = useMarksStore();
-  const [selectedExam, setSelectedExam] = useState<ExamType>('Unit Test');
+  const [selectedExam, setSelectedExam] = useState<ExamType>('Quarterly');
+  const [examMarks, setExamMarks] = useState<Array<{ subject: string; marks: number; maxMarks: number }>>([]);
 
-  const myMarks = marks.filter(m => m.studentId === user?.id);
-  const examMarks = myMarks.filter(m => m.examType === selectedExam);
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
 
-  const stats = [
+    void fetchStudentMarksByProfile(user.id, selectedExam)
+      .then((marks) =>
+        setExamMarks(marks.map((mark) => ({
+          subject: mark.subject,
+          marks: mark.marks,
+          maxMarks: mark.maxMarks,
+        })))
+      )
+      .catch(console.error);
+  }, [selectedExam, user?.id]);
+
+  const stats = useMemo(() => [
     { title: 'Average Score', value: examMarks.length ? (examMarks.reduce((acc, curr) => acc + curr.marks, 0) / examMarks.length).toFixed(1) + '%' : 'N/A', icon: BarChart3, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { title: 'Top Grade', value: examMarks.length ? Math.max(...examMarks.map(m => m.marks)) + '%' : 'N/A', icon: Award, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { title: 'Top Grade', value: examMarks.length ? Math.max(...examMarks.map((mark) => mark.marks)) + '%' : 'N/A', icon: Award, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { title: 'Subjects', value: examMarks.length, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50' },
-  ];
+  ], [examMarks]);
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Academic Progress</h2>
-          <p className="text-slate-500 text-sm">View your exam results and performance analytics</p>
+          <p className="text-slate-500 text-sm">View your exam results and performance analytics from the live database.</p>
         </div>
-        
+
         <div className="flex bg-white border border-slate-200 rounded-2xl p-1 shadow-sm">
-          {EXAM_TYPES.map(type => (
-            <button 
+          {MARK_EXAMS.map((type) => (
+            <button
               key={type}
               onClick={() => setSelectedExam(type)}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                selectedExam === type 
-                  ? "bg-slate-900 text-white shadow-md"
-                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                selectedExam === type
+                  ? 'bg-slate-900 text-white shadow-md'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
               }`}
             >
               {type}
@@ -69,7 +81,7 @@ const StudentMarks = () => {
               <BarChart data={examMarks}>
                 <XAxis dataKey="subject" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
                 <YAxis hide domain={[0, 100]} />
-                <Tooltip 
+                <Tooltip
                   cursor={{ fill: '#f8fafc' }}
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px' }}
                 />

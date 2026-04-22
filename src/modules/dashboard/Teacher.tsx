@@ -11,6 +11,7 @@ const TeacherDashboard = () => {
   const students = useClassStore((state) => state.students);
   const navigate = useNavigate();
   const assignedClasses = user?.classes || [];
+  const teacherSubjectLabel = user?.subjects?.length ? user.subjects.join(', ') : (user?.subject || 'General');
 
   useEffect(() => {
     void initialize();
@@ -70,7 +71,7 @@ const TeacherDashboard = () => {
                    <div className="flex-1 flex justify-between items-center pr-2">
                      <div>
                        <h4 className="text-base font-semibold text-slate-900">{cls}</h4>
-                       <p className="text-sm text-slate-500">{user?.subject || 'General'}</p>
+                       <p className="text-sm text-slate-500">{teacherSubjectLabel}</p>
                      </div>
                      <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-600 border border-slate-200">
                        Lecture
@@ -118,7 +119,7 @@ const TeacherDashboard = () => {
                   </div>
                   <div>
                     <h4 className="font-semibold text-indigo-900">Upload Marks: Mid-Term Exam</h4>
-                    <p className="text-xs text-indigo-600 mt-0.5">{assignedClasses[1]} {user?.subject}</p>
+                    <p className="text-xs text-indigo-600 mt-0.5">{assignedClasses[1]} {teacherSubjectLabel}</p>
                   </div>
                 </div>
                 <span className="text-indigo-600 font-medium text-sm">Start →</span>
