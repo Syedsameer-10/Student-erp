@@ -1,41 +1,30 @@
-# School ERP Frontend
+# School ERP
 
-This app now uses Supabase as the backend layer for authentication, complaint handling, AI attendance processing, and attendance persistence.
+This repository is now split into two clear parts:
 
-## Environment
+- `frontend/` for the React + Vite application
+- `backend/` for Supabase migrations, functions, and admin scripts
 
-Create a local `.env` file from `.env.example` and set:
+## Structure
 
-```bash
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
+```text
+school-erp-system/
+  frontend/
+  backend/
 ```
 
-## Supabase Setup
+## Frontend
 
-1. Run the SQL in [supabase/migrations/20260421_supabase_backend.sql](/C:/Users/samee/projects/student-ERP/school-erp-system/supabase/migrations/20260421_supabase_backend.sql).
-2. Create matching users in Supabase Auth.
-3. Insert a row into `public.profiles` for each auth user.
-4. Set the Edge Function secret:
+Run the UI from `frontend/`:
 
 ```bash
-supabase secrets set GEMINI_API_KEY=your_gemini_key
-```
-
-5. Deploy the AI attendance function:
-
-```bash
-supabase functions deploy ai-attendance
-```
-
-## Run
-
-```bash
+cd frontend
 npm install
 npm run dev
 ```
 
-## Notes
+## Backend
 
-- The legacy `backend/` services are no longer needed after the Supabase setup is in place.
-- Many dashboard/demo views still use frontend sample data and Zustand stores, while the previously backend-backed flows now run through Supabase.
+The Supabase project assets live under `backend/supabase/`, and backend/admin utilities live under `backend/scripts/`.
+
+See the local README files inside each folder for details.

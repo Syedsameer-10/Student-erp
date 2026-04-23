@@ -40,6 +40,13 @@ const fetchTeachers = async () => {
   return request(url, { headers: restHeaders });
 };
 
+const fetchAuthUsers = async () => {
+  const data = await request(`${SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=1000`, {
+    headers: restHeaders,
+  });
+  return data?.users || [];
+};
+
 const createAuthUser = async (student) => {
   const payload = {
     email: student.email,
@@ -51,11 +58,22 @@ const createAuthUser = async (student) => {
     },
   };
 
-  return request(`${SUPABASE_URL}/auth/v1/admin/users`, {
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(payload),
   });
+
+  if (response.ok) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  if (response.status === 422 && text.includes('email_exists')) {
+    return { emailExists: true };
+  }
+
+  throw new Error(`${response.status} ${response.statusText}: ${text}`);
 };
 
 const getAuthUserId = (response) => response?.user?.id || response?.id || null;
@@ -66,14 +84,19 @@ const upsertProfiles = async (profiles) => {
   }
 
   const url = `${SUPABASE_URL}/rest/v1/profiles?on_conflict=id`;
-  await request(url, {
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       ...jsonHeaders,
-      Prefer: 'resolution=merge-duplicates',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
     },
     body: JSON.stringify(profiles),
   });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`${response.status} ${response.statusText}: ${text}`);
+  }
 };
 
 const updateStudentProfileLink = async (studentId, profileId) => {
@@ -110,7 +133,12 @@ const normalizeSection = (sectionName) => {
 };
 
 const main = async () => {
-  const [students, teachers] = await Promise.all([fetchStudents(), fetchTeachers()]);
+  const [students, teachers, authUsers] = await Promise.all([fetchStudents(), fetchTeachers(), fetchAuthUsers()]);
+  const authUserMap = new Map(
+    authUsers
+      .filter((user) => user.email)
+      .map((user) => [String(user.email).toLowerCase(), user.id])
+  );
   const grouped = new Map();
 
   for (const student of students) {
@@ -148,6 +176,8 @@ const main = async () => {
   const createdTeachers = [];
   const createdStudents = [];
   const profileRows = [];
+  const teacherLinks = [];
+  const studentLinks = [];
 
   for (const teacher of teachers) {
     let profileId = teacher.profile_id;
@@ -157,12 +187,13 @@ const main = async () => {
         name: teacher.name,
         role: 'Teacher',
       });
-      profileId = getAuthUserId(authUser);
+      profileId = getAuthUserId(authUser) || authUserMap.get(String(teacher.email).toLowerCase()) || null;
       if (!profileId) {
         throw new Error(`Could not determine auth user id for teacher ${teacher.email}.`);
       }
+      authUserMap.set(String(teacher.email).toLowerCase(), profileId);
       createdTeachers.push(teacher.email);
-      await updateTeacherProfileLink(teacher.id, profileId);
+      teacherLinks.push({ teacherId: teacher.id, profileId });
     }
 
     profileRows.push({
@@ -188,12 +219,13 @@ const main = async () => {
         name: student.name,
         role: 'Student',
       });
-      profileId = getAuthUserId(authUser);
+      profileId = getAuthUserId(authUser) || authUserMap.get(String(student.email).toLowerCase()) || null;
       if (!profileId) {
         throw new Error(`Could not determine auth user id for student ${student.email}.`);
       }
+      authUserMap.set(String(student.email).toLowerCase(), profileId);
       createdStudents.push(student.email);
-      await updateStudentProfileLink(student.id, profileId);
+      studentLinks.push({ studentId: student.id, profileId });
     }
 
     const { className, standard, section } = normalizeSection(student.sectionName);
@@ -213,6 +245,14 @@ const main = async () => {
   }
 
   await upsertProfiles(profileRows);
+
+  for (const link of teacherLinks) {
+    await updateTeacherProfileLink(link.teacherId, link.profileId);
+  }
+
+  for (const link of studentLinks) {
+    await updateStudentProfileLink(link.studentId, link.profileId);
+  }
 
   console.log(JSON.stringify({
     teacherCount: teachers.length,

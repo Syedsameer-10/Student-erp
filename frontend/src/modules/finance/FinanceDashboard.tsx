@@ -7,6 +7,18 @@ import { useClassStore } from '../../store/useClassStore';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { fetchFeeRecords, type FeeRecord } from '../../services/erpContent';
 
+const splitSectionName = (sectionName?: string) => {
+  if (!sectionName) {
+    return { className: '-', section: '-' };
+  }
+
+  const [className, section] = sectionName.split('-');
+  return {
+    className: className || sectionName,
+    section: section || '-',
+  };
+};
+
 const FinanceDashboard = () => {
   const { user } = useAuthStore();
   const initializeSchoolData = useClassStore((state) => state.initialize);
@@ -14,6 +26,7 @@ const FinanceDashboard = () => {
   const [notification, setNotification] = useState<string | null>(null);
   const [feeRecords, setFeeRecords] = useState<FeeRecord[]>([]);
   const [selectedClass, setSelectedClass] = useState('ALL');
+  const [selectedSection, setSelectedSection] = useState('ALL');
 
   useEffect(() => {
     void initializeSchoolData();
@@ -85,13 +98,42 @@ const FinanceDashboard = () => {
 
   const staffView = user?.role === 'Admin' || user?.role === 'Accountant';
 
+  const classOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          sections.map((section) => splitSectionName(section.name).className)
+        )
+      ).sort((left, right) => left.localeCompare(right, undefined, { numeric: true })),
+    [sections]
+  );
+
+  const sectionOptions = useMemo(() => {
+    const scopedSections = sections.filter((section) => {
+      if (selectedClass === 'ALL') {
+        return true;
+      }
+
+      return splitSectionName(section.name).className === selectedClass;
+    });
+
+    return Array.from(
+      new Set(scopedSections.map((section) => splitSectionName(section.name).section))
+    ).sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+  }, [sections, selectedClass]);
+
   const visibleRecords = useMemo(() => {
     if (!staffView) {
       return feeRecords;
     }
 
-    return feeRecords.filter((fee) => selectedClass === 'ALL' || fee.sectionName === selectedClass);
-  }, [feeRecords, selectedClass, staffView]);
+    return feeRecords.filter((fee) => {
+      const parsed = splitSectionName(fee.sectionName);
+      const matchesClass = selectedClass === 'ALL' || parsed.className === selectedClass;
+      const matchesSection = selectedSection === 'ALL' || parsed.section === selectedSection;
+      return matchesClass && matchesSection;
+    });
+  }, [feeRecords, selectedClass, selectedSection, staffView]);
 
   const totalRevenue = visibleRecords.reduce((sum, fee) => sum + Number(fee.paidAmount), 0);
   const totalPending = visibleRecords.reduce((sum, fee) => sum + Number(fee.pendingAmount), 0);
@@ -174,16 +216,31 @@ const FinanceDashboard = () => {
             {staffView ? 'Student Fee Registry' : 'My Academic Fee Statement'}
           </h2>
           {staffView ? (
-            <select
-              value={selectedClass}
-              onChange={(event) => setSelectedClass(event.target.value)}
-              className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-200 outline-none"
-            >
-              <option value="ALL">All Classes</option>
-              {sections.map((section) => (
-                <option key={section.id} value={section.name}>{section.name}</option>
-              ))}
-            </select>
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+              <select
+                value={selectedClass}
+                onChange={(event) => {
+                  setSelectedClass(event.target.value);
+                  setSelectedSection('ALL');
+                }}
+                className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-200 outline-none"
+              >
+                <option value="ALL">All Classes</option>
+                {classOptions.map((className) => (
+                  <option key={className} value={className}>{className}</option>
+                ))}
+              </select>
+              <select
+                value={selectedSection}
+                onChange={(event) => setSelectedSection(event.target.value)}
+                className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-200 outline-none"
+              >
+                <option value="ALL">All Sections</option>
+                {sectionOptions.map((sectionName) => (
+                  <option key={sectionName} value={sectionName}>Section {sectionName}</option>
+                ))}
+              </select>
+            </div>
           ) : (
             <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-1 rounded">2026 Academic Year</span>
           )}

@@ -20,6 +20,8 @@ export interface IClassState {
     isLoading: boolean;
     initialized: boolean;
     initialize: () => Promise<void>;
+    reset: () => void;
+    refresh: () => Promise<void>;
 
     // CRUD Actions
     addTeacher: (teacher: Omit<ITeacher, 'id'>) => Promise<void>;
@@ -58,6 +60,45 @@ export const useClassStore = create<IClassState>()(
                 });
             } catch (error) {
                 console.error('Failed to load school data:', error);
+                set({ isLoading: false });
+            }
+        },
+        reset: () => {
+            set({
+                categories: [],
+                sections: [],
+                teachers: [],
+                students: [],
+                inCharges: {},
+                isLoading: false,
+                initialized: false,
+            });
+        },
+        refresh: async () => {
+            if (get().isLoading) {
+                return;
+            }
+
+            set({
+                categories: [],
+                sections: [],
+                teachers: [],
+                students: [],
+                inCharges: {},
+                initialized: false,
+                isLoading: true,
+            });
+
+            try {
+                const data = await fetchSchoolData();
+                set({
+                    ...data,
+                    inCharges: {},
+                    isLoading: false,
+                    initialized: true,
+                });
+            } catch (error) {
+                console.error('Failed to refresh school data:', error);
                 set({ isLoading: false });
             }
         },

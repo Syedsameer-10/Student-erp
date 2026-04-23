@@ -216,36 +216,60 @@ const TeacherClasses = () => {
                 </form>
               )}
 
-              <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
-                {visibleStudents.map((student) => (
-                  <div key={student.id} className="rounded-[2rem] border border-slate-100 bg-slate-50 p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{student.rollNo}</p>
-                        <h3 className="mt-2 text-xl font-black text-slate-900">{student.name}</h3>
-                        <p className="mt-1 text-sm text-slate-500">
-                          {student.gender} • DOB {student.dob}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => void handleDeleteStudent(student.id)}
-                        className="rounded-2xl bg-rose-50 p-3 text-rose-500 transition-colors hover:bg-rose-100"
-                        title="Remove student"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                    <div className="mt-5 grid grid-cols-1 gap-2 text-sm text-slate-600">
-                      <p>Parent: <span className="font-semibold text-slate-900">{student.parentName}</span></p>
-                      <p>Parent Contact: <span className="font-semibold text-slate-900">{student.parentContact}</span></p>
-                      <p>Student Contact: <span className="font-semibold text-slate-900">{student.contact}</span></p>
-                      <p>Address: <span className="font-semibold text-slate-900">{student.address}</span></p>
-                    </div>
+              <div className="mt-6 overflow-hidden rounded-[2rem] border border-slate-100">
+                {visibleStudents.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[860px] text-left text-sm">
+                      <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                        <tr>
+                          <th className="px-5 py-4">Roll</th>
+                          <th className="px-5 py-4">Student</th>
+                          <th className="px-5 py-4">Parent</th>
+                          <th className="px-5 py-4">Parent Contact</th>
+                          <th className="px-5 py-4">Student Contact</th>
+                          <th className="px-5 py-4">DOB</th>
+                          <th className="px-5 py-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleStudents.map((student) => (
+                          <tr key={student.id} className="border-t border-slate-100 bg-white hover:bg-slate-50/60 transition-colors">
+                            <td className="px-5 py-4 font-black text-slate-300">{student.rollNo}</td>
+                            <td className="px-5 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 font-black flex items-center justify-center shrink-0">
+                                  {student.name[0]}
+                                </div>
+                                <div>
+                                  <p className="font-bold text-slate-900">{student.name}</p>
+                                  <p className="text-xs text-slate-500">
+                                    {student.gender} · {student.email || 'No email'}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-5 py-4 font-semibold text-slate-700">{student.parentName}</td>
+                            <td className="px-5 py-4 text-slate-500">{student.parentContact}</td>
+                            <td className="px-5 py-4 text-slate-500">{student.contact}</td>
+                            <td className="px-5 py-4 text-slate-500">{student.dob}</td>
+                            <td className="px-5 py-4">
+                              <div className="flex justify-end">
+                                <button
+                                  onClick={() => void handleDeleteStudent(student.id)}
+                                  className="rounded-2xl bg-rose-50 p-3 text-rose-500 transition-colors hover:bg-rose-100"
+                                  title="Remove student"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-
-                {!visibleStudents.length && (
-                  <div className="rounded-[2rem] border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center xl:col-span-2">
+                ) : (
+                  <div className="bg-slate-50 px-6 py-10 text-center">
                     <Users size={32} className="mx-auto text-slate-200" />
                     <p className="mt-4 text-sm font-medium text-slate-500">No students found in this section yet.</p>
                   </div>

@@ -306,31 +306,62 @@ export default function ClassesDashboard() {
                     </div>
                 </div>
 
-                {/* Student Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {students.map(s => (
-                        <motion.div
-                            layout key={s.id}
-                            className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm group hover:shadow-2xl hover:shadow-teal-500/10 transition-all"
-                        >
-                            <div className="flex justify-between items-start mb-6">
-                                <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center font-black text-3xl text-slate-300 group-hover:bg-teal-50 group-hover:text-teal-500 transition-colors">
-                                    {s.rollNo}
-                                </div>
-                                <IconBtn icon={Trash2} variant="red" onClick={() => setConfirmDelete({ type: 'STUDENT', id: s.id, name: s.name })} />
-                            </div>
-                            <h4 className="text-xl font-bold text-slate-800 mb-1">{s.name}</h4>
-                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest mb-6 inline-block ${s.gender === 'Male' ? 'bg-blue-50 text-blue-500' : 'bg-pink-50 text-pink-500'}`}>
-                                {s.gender}
-                            </span>
-                            <button
-                                onClick={() => { setActiveProfile(s); setView('STUDENT_PROFILE'); }}
-                                className="w-full py-4 bg-slate-50 text-slate-600 rounded-2xl font-black text-[11px] uppercase tracking-[0.1em] hover:bg-slate-900 hover:text-white transition-all mt-2"
-                            >
-                                View Profile
-                            </button>
-                        </motion.div>
-                    ))}
+                {/* Student Rows */}
+                <div className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[760px] text-left text-sm">
+                            <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                                <tr>
+                                    <th className="px-6 py-4">Roll</th>
+                                    <th className="px-6 py-4">Student</th>
+                                    <th className="px-6 py-4">Gender</th>
+                                    <th className="px-6 py-4">Parent</th>
+                                    <th className="px-6 py-4">Contact</th>
+                                    <th className="px-6 py-4 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {students.map((s) => (
+                                    <motion.tr
+                                        layout
+                                        key={s.id}
+                                        className="border-t border-slate-100 hover:bg-slate-50/70 transition-colors"
+                                    >
+                                        <td className="px-6 py-4 font-black text-slate-300">{s.rollNo}</td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-black">
+                                                    {s.name[0]}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-900">{s.name}</p>
+                                                    <p className="text-xs text-slate-500">{s.email || 'No email'}</p>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest ${s.gender === 'Male' ? 'bg-blue-50 text-blue-500' : s.gender === 'Female' ? 'bg-pink-50 text-pink-500' : 'bg-slate-100 text-slate-500'}`}>
+                                                {s.gender}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 font-semibold text-slate-700">{s.parentName}</td>
+                                        <td className="px-6 py-4 text-slate-500">{s.contact}</td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    onClick={() => { setActiveProfile(s); setView('STUDENT_PROFILE'); }}
+                                                    className="px-3 py-2 bg-slate-50 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all"
+                                                >
+                                                    View Profile
+                                                </button>
+                                                <IconBtn icon={Trash2} variant="red" onClick={() => setConfirmDelete({ type: 'STUDENT', id: s.id, name: s.name })} />
+                                            </div>
+                                        </td>
+                                    </motion.tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 {/* Modals */}

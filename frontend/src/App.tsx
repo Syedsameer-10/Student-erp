@@ -52,15 +52,27 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
   const isLoading = useAuthStore((state) => state.isLoading);
+  const user = useAuthStore((state) => state.user);
   const initializeSchoolData = useClassStore((state) => state.initialize);
+  const refreshSchoolData = useClassStore((state) => state.refresh);
+  const resetSchoolData = useClassStore((state) => state.reset);
 
   useEffect(() => {
     void initialize();
   }, [initialize]);
 
   useEffect(() => {
-    void initializeSchoolData();
-  }, [initializeSchoolData]);
+    if (isLoading) {
+      return;
+    }
+
+    if (!user) {
+      resetSchoolData();
+      return;
+    }
+
+    void refreshSchoolData();
+  }, [initializeSchoolData, isLoading, refreshSchoolData, resetSchoolData, user?.id, user?.role]);
 
   if (isLoading) {
     return <div className="flex items-center justify-center min-h-screen text-slate-500">Loading...</div>;
