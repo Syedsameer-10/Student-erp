@@ -267,9 +267,9 @@ const AIAttendance = () => {
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-widest">
                   <tr>
-                    <th className="px-4 py-3 sticky left-0 bg-slate-50 z-10 min-w-[220px]">Student</th>
+                    <th className="px-3 py-2.5 sticky left-0 bg-slate-50 z-10 min-w-[180px]">Student</th>
                     {Array.from({ length: dayCount }, (_, index) => (
-                      <th key={index} className="px-3 py-3 text-center min-w-[72px]">
+                      <th key={index} className="px-2 py-2.5 text-center min-w-[60px]">
                         Day {index + 1}
                       </th>
                     ))}
@@ -278,15 +278,15 @@ const AIAttendance = () => {
                 <tbody>
                   {normalizedRows.map((row, rowIndex) => (
                     <tr key={`${row.studentName}-${rowIndex}`} className="border-b border-slate-100 last:border-0">
-                      <td className="px-4 py-3 sticky left-0 bg-white z-10 font-semibold text-slate-900">
+                      <td className="px-3 py-2.5 sticky left-0 bg-white z-10 font-semibold text-slate-900">
                         {row.studentName}
                       </td>
                       {row.attendance.map((value, dayIndex) => (
-                        <td key={dayIndex} className="px-2 py-3 text-center">
+                        <td key={dayIndex} className="px-1.5 py-2 text-center">
                           <select
                             value={value}
                             onChange={(event) => handleCellChange(rowIndex, dayIndex, event.target.value as AttendanceValue)}
-                            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center font-bold text-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
+                            className="w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-center text-xs font-bold text-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
                           >
                             <option value="P">P</option>
                             <option value="A">A</option>

@@ -16,16 +16,19 @@ import {
 import { useAuthStore } from '../../store/useAuthStore';
 import {
   useComplaintStore,
-  type Complaint,
   type ComplaintDivision,
   type ComplaintPriority,
   type ComplaintType,
 } from '../../store/useComplaintStore';
 import { createComplaint, fetchComplaints } from '../../services/complaints';
+import {
+  fetchRecipientsForStudentContext,
+  fetchStudentRoutingContext,
+  type RecipientOption,
+  type RecipientRouteType,
+} from '../../services/recipientRouting';
 
 const MAX_DESCRIPTION_LENGTH = 250;
-
-type SendToOption = 'Class Teacher' | 'Subject Teacher' | 'Governing Body';
 
 const divisionCards: { title: ComplaintDivision; description: string }[] = [
   {
@@ -41,27 +44,6 @@ const divisionCards: { title: ComplaintDivision; description: string }[] = [
 const complaintTypes: ComplaintType[] = ['Academic', 'Hostel', 'Discipline', 'Infrastructure', 'Other'];
 const priorities: ComplaintPriority[] = ['Low', 'Medium', 'High'];
 
-const resolveTarget = (sendTo: SendToOption): Pick<Complaint, 'targetId' | 'targetRole'> => {
-  if (sendTo === 'Governing Body') {
-    return {
-      targetId: 'governing-body',
-      targetRole: 'Governing Body',
-    };
-  }
-
-  if (sendTo === 'Subject Teacher') {
-    return {
-      targetId: 'teacher-subject',
-      targetRole: 'Teacher',
-    };
-  }
-
-  return {
-    targetId: 'teacher-class',
-    targetRole: 'Teacher',
-  };
-};
-
 const formatTrackingId = (complaintId: string) => complaintId.replace(/^cmp/i, 'CMP');
 
 const ComplaintForm = () => {
@@ -72,9 +54,12 @@ const ComplaintForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormHighlighted, setIsFormHighlighted] = useState(false);
   const [successTrackingId, setSuccessTrackingId] = useState<string | null>(null);
+  const [recipients, setRecipients] = useState<RecipientOption[]>([]);
+  const [studentContext, setStudentContext] = useState<Awaited<ReturnType<typeof fetchStudentRoutingContext>>>(null);
   const [formData, setFormData] = useState({
     division: 'Boys' as ComplaintDivision,
-    sendTo: 'Class Teacher' as SendToOption,
+    sendTo: 'Class Teacher' as RecipientRouteType,
+    recipientId: '',
     title: '',
     description: '',
     type: 'Academic' as ComplaintType,
@@ -95,14 +80,48 @@ const ComplaintForm = () => {
       return;
     }
 
-    fetchComplaints({ studentId: user.id })
-      .then((result) => {
-        setComplaints(result);
+    Promise.all([
+      fetchComplaints({ studentId: user.id }),
+      fetchStudentRoutingContext(user.id).then(async (context) => {
+        setStudentContext(context);
+        return context ? fetchRecipientsForStudentContext(context) : [];
+      }),
+    ])
+      .then(([complaintRows, recipientRows]) => {
+        setComplaints(complaintRows);
+        setRecipients(recipientRows);
+        setFormData((current) => {
+          const nextRecipient =
+            recipientRows.find((recipient) => recipient.routeType === current.sendTo)?.id ||
+            recipientRows[0]?.id ||
+            '';
+
+          return {
+            ...current,
+            recipientId: current.recipientId || nextRecipient,
+          };
+        });
       })
       .catch((error) => {
-        console.error('Failed to fetch student complaints:', error);
+        console.error('Failed to fetch complaint context:', error);
       });
   }, [setComplaints, user?.id]);
+
+  const recipientOptions = useMemo(
+    () => recipients.filter((recipient) => recipient.routeType === formData.sendTo),
+    [formData.sendTo, recipients]
+  );
+
+  useEffect(() => {
+    if (!recipientOptions.length) {
+      setFormData((current) => ({ ...current, recipientId: '' }));
+      return;
+    }
+
+    if (!recipientOptions.some((recipient) => recipient.id === formData.recipientId)) {
+      setFormData((current) => ({ ...current, recipientId: recipientOptions[0].id }));
+    }
+  }, [formData.recipientId, recipientOptions]);
 
   useEffect(() => {
     if (!isFormHighlighted) {
@@ -128,18 +147,25 @@ const ComplaintForm = () => {
     setIsSubmitting(true);
     setErrorMessage(null);
 
-    const target = resolveTarget(formData.sendTo);
+    const selectedRecipient = recipientOptions.find((recipient) => recipient.id === formData.recipientId);
+    if (!selectedRecipient) {
+      setErrorMessage('Please choose a valid complaint recipient.');
+      setIsSubmitting(false);
+      return;
+    }
+
     const payload = {
       studentId: user.id,
-      studentName: user.name || 'Student',
-      class: user.class || '10-A',
-      section: user.section || 'A',
+      studentName: studentContext?.name || user.name || 'Student',
+      class: studentContext?.className || user.class || '10-A',
+      section: studentContext?.className?.split('-')[1] || user.section || 'A',
       division: formData.division,
       title: formData.title.trim(),
       description: formData.description.trim(),
       type: formData.type,
-      targetId: target.targetId,
-      targetRole: target.targetRole,
+      targetId: selectedRecipient.id,
+      targetRole: selectedRecipient.role,
+      targetType: selectedRecipient.routeType,
       priority: formData.priority,
     };
 
@@ -154,6 +180,7 @@ const ComplaintForm = () => {
         description: '',
         type: 'Academic',
         sendTo: 'Class Teacher',
+        recipientId: recipients.find((recipient) => recipient.routeType === 'Class Teacher')?.id || '',
         priority: 'Medium',
         createdAt: new Date().toISOString().split('T')[0],
       }));
@@ -259,7 +286,7 @@ const ComplaintForm = () => {
                   <User size={14} /> Student Name
                 </label>
                 <div className="px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 text-slate-700 font-medium">
-                  {user?.name}
+                  {studentContext?.name || user?.name}
                 </div>
               </div>
               <div className="space-y-2">
@@ -267,7 +294,7 @@ const ComplaintForm = () => {
                   <BookOpen size={14} /> Class / Section
                 </label>
                 <div className="px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 text-slate-700 font-medium">
-                  {user?.class || '10-A'} / {user?.section || 'A'}
+                  {studentContext?.className || user?.class || '10-A'}
                 </div>
               </div>
               <div className="space-y-2">
@@ -324,7 +351,7 @@ const ComplaintForm = () => {
                 </label>
                 <select
                   value={formData.sendTo}
-                  onChange={(event) => setFormData((current) => ({ ...current, sendTo: event.target.value as SendToOption }))}
+                  onChange={(event) => setFormData((current) => ({ ...current, sendTo: event.target.value as RecipientRouteType }))}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 hover:border-indigo-300 bg-slate-50/50 transition-all outline-none"
                 >
                   <option value="Class Teacher">Class Teacher</option>
@@ -332,6 +359,27 @@ const ComplaintForm = () => {
                   <option value="Governing Body">Governing Body</option>
                 </select>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <School size={14} /> Recipient
+              </label>
+              <select
+                value={formData.recipientId}
+                onChange={(event) => setFormData((current) => ({ ...current, recipientId: event.target.value }))}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 hover:border-indigo-300 bg-slate-50/50 transition-all outline-none"
+                disabled={!recipientOptions.length}
+              >
+                {!recipientOptions.length && <option value="">No recipients available</option>}
+                {recipientOptions.map((recipient) => (
+                  <option key={`${recipient.routeType}-${recipient.id}`} value={recipient.id}>
+                    {recipient.name}
+                    {recipient.subjects.length ? ` - ${recipient.subjects.join(', ')}` : ''}
+                    {recipient.classNames.length ? ` - ${recipient.classNames.join(', ')}` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-3">

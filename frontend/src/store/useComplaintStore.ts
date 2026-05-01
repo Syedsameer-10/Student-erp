@@ -18,6 +18,7 @@ export interface Complaint {
   type: ComplaintType;
   targetId: string;
   targetRole: 'Teacher' | 'Governing Body' | 'Unknown';
+  targetType?: 'Class Teacher' | 'Subject Teacher' | 'Governing Body';
   priority: ComplaintPriority;
   status: ComplaintStatus;
   createdAt: string;

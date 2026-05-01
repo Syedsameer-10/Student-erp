@@ -5,25 +5,29 @@ import {
   createLeaveRequest,
   fetchStudentLeaveContext,
   fetchStudentLeaveRequests,
-  fetchTeachersForClass,
   type LeaveRequestRecord,
-  type TeacherOption,
 } from '../../services/leave';
+import {
+  fetchRecipientsForStudentContext,
+  type RecipientOption,
+  type RecipientRouteType,
+} from '../../services/recipientRouting';
 
 const LeaveRequestForm = () => {
   const { user } = useAuthStore();
   const [submitted, setSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [studentContext, setStudentContext] = useState<{ id: string; name: string; rollNo: string; className: string } | null>(null);
-  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [studentContext, setStudentContext] = useState<Awaited<ReturnType<typeof fetchStudentLeaveContext>>>(null);
+  const [recipients, setRecipients] = useState<RecipientOption[]>([]);
   const [requests, setRequests] = useState<LeaveRequestRecord[]>([]);
   const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
   const [formData, setFormData] = useState({
     startDate: '',
     endDate: '',
     reason: '',
-    teacherId: '',
+    recipientType: 'Class Teacher' as RecipientRouteType,
+    recipientId: '',
   });
 
   useEffect(() => {
@@ -45,8 +49,8 @@ const LeaveRequestForm = () => {
 
         setStudentContext(context);
 
-        const [teacherRows, leaveRows] = await Promise.all([
-          context ? fetchTeachersForClass(context.className) : Promise.resolve([]),
+        const [recipientRows, leaveRows] = await Promise.all([
+          context ? fetchRecipientsForStudentContext(context) : Promise.resolve([]),
           fetchStudentLeaveRequests(),
         ]);
 
@@ -54,12 +58,20 @@ const LeaveRequestForm = () => {
           return;
         }
 
-        setTeachers(teacherRows);
+        setRecipients(recipientRows);
         setRequests(leaveRows);
-        setFormData((current) => ({
-          ...current,
-          teacherId: current.teacherId || teacherRows[0]?.id || '',
-        }));
+        setFormData((current) => {
+          const initialType = recipientRows.some((recipient) => recipient.routeType === current.recipientType)
+            ? current.recipientType
+            : (recipientRows[0]?.routeType || 'Class Teacher');
+          const initialRecipient = recipientRows.find((recipient) => recipient.routeType === initialType);
+
+          return {
+            ...current,
+            recipientType: initialType,
+            recipientId: current.recipientId || initialRecipient?.id || '',
+          };
+        });
       } catch (loadError: any) {
         if (active) {
           setError(loadError?.message || 'Unable to load leave request data.');
@@ -78,6 +90,22 @@ const LeaveRequestForm = () => {
     };
   }, [user?.id]);
 
+  const recipientOptions = useMemo(
+    () => recipients.filter((recipient) => recipient.routeType === formData.recipientType),
+    [formData.recipientType, recipients]
+  );
+
+  useEffect(() => {
+    if (!recipientOptions.length) {
+      setFormData((current) => ({ ...current, recipientId: '' }));
+      return;
+    }
+
+    if (!recipientOptions.some((recipient) => recipient.id === formData.recipientId)) {
+      setFormData((current) => ({ ...current, recipientId: recipientOptions[0].id }));
+    }
+  }, [formData.recipientId, recipientOptions]);
+
   const filteredRequests = useMemo(
     () =>
       requests
@@ -88,13 +116,13 @@ const LeaveRequestForm = () => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!user || !studentContext || !formData.teacherId) {
+    if (!user || !studentContext || !formData.recipientId) {
       return;
     }
 
-    const selectedTeacher = teachers.find((teacher) => teacher.id === formData.teacherId);
-    if (!selectedTeacher) {
-      setError('Please choose a valid teacher.');
+    const selectedRecipient = recipientOptions.find((recipient) => recipient.id === formData.recipientId);
+    if (!selectedRecipient) {
+      setError('Please choose a valid recipient.');
       return;
     }
 
@@ -106,8 +134,9 @@ const LeaveRequestForm = () => {
         studentName: studentContext.name,
         className: studentContext.className,
         rollNumber: studentContext.rollNo,
-        teacherId: selectedTeacher.id,
-        teacherName: selectedTeacher.name,
+        teacherId: selectedRecipient.id,
+        teacherName: selectedRecipient.name,
+        recipientType: selectedRecipient.routeType,
         startDate: formData.startDate,
         endDate: formData.endDate,
         reason: formData.reason,
@@ -168,20 +197,49 @@ const LeaveRequestForm = () => {
 
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              Route To
+            </label>
+            <select
+              value={formData.recipientType}
+              onChange={(event) =>
+                setFormData((current) => ({
+                  ...current,
+                  recipientType: event.target.value as RecipientRouteType,
+                }))
+              }
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 bg-slate-50/50 transition-all outline-none"
+              disabled={isLoading || !recipients.length}
+            >
+              <option value="Class Teacher">Class Teacher</option>
+              <option value="Subject Teacher">Subject Teacher</option>
+              <option value="Governing Body">Governing Body</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
               Teacher / Department
             </label>
             <select
-              value={formData.teacherId}
-              onChange={(event) => setFormData({ ...formData, teacherId: event.target.value })}
+              value={formData.recipientId}
+              onChange={(event) => setFormData({ ...formData, recipientId: event.target.value })}
               className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 bg-slate-50/50 transition-all outline-none"
-              disabled={isLoading || !teachers.length}
+              disabled={isLoading || !recipientOptions.length}
             >
-              {teachers.map((teacher) => (
-                <option key={teacher.id} value={teacher.id}>
-                  {teacher.name} ({teacher.subjects.join(', ')})
+              {!recipientOptions.length && <option value="">No recipients available</option>}
+              {recipientOptions.map((recipient) => (
+                <option key={`${recipient.routeType}-${recipient.id}`} value={recipient.id}>
+                  {recipient.name}
+                  {recipient.subjects.length ? ` - ${recipient.subjects.join(', ')}` : ''}
+                  {recipient.classNames.length ? ` - ${recipient.classNames.join(', ')}` : ''}
                 </option>
               ))}
             </select>
+            {!isLoading && !recipientOptions.length && (
+              <p className="text-xs font-medium text-amber-600">
+                No matching recipient was found for this route yet. Add class-teacher or subject-teacher mappings in the DB to enable routing.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -230,7 +288,7 @@ const LeaveRequestForm = () => {
 
           <button
             type="submit"
-            disabled={isLoading || !teachers.length}
+            disabled={isLoading || !recipientOptions.length}
             className="w-full flex items-center justify-center gap-2 py-4 px-6 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Send size={18} />

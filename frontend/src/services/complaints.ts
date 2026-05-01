@@ -18,6 +18,7 @@ interface ComplaintRow {
   type: ComplaintType;
   target_id: string;
   target_role: Complaint['targetRole'];
+  target_type: NonNullable<Complaint['targetType']> | null;
   priority: ComplaintPriority;
   status: Complaint['status'];
   created_at: string;
@@ -28,6 +29,7 @@ interface ComplaintRow {
 type ComplaintFilters = {
   studentId?: string;
   targetRole?: Complaint['targetRole'];
+  targetId?: string;
 };
 
 type CreateComplaintInput = Omit<Complaint, 'id' | 'status' | 'createdAt' | 'response' | 'resolvedAt'>;
@@ -52,6 +54,7 @@ const mapComplaintRow = (row: ComplaintRow): Complaint => ({
   type: row.type,
   targetId: row.target_id,
   targetRole: row.target_role,
+  targetType: row.target_type || undefined,
   priority: row.priority,
   status: row.status,
   createdAt: row.created_at,
@@ -63,7 +66,7 @@ export const fetchComplaints = async (filters: ComplaintFilters = {}) => {
   const client = assertSupabase();
   let query = client
     .from('complaints')
-    .select('id, student_id, student_name, class_name, section, division, title, description, type, target_id, target_role, priority, status, created_at, response, resolved_at')
+    .select('id, student_id, student_name, class_name, section, division, title, description, type, target_id, target_role, target_type, priority, status, created_at, response, resolved_at')
     .order('created_at', { ascending: false });
 
   if (filters.studentId) {
@@ -72,6 +75,10 @@ export const fetchComplaints = async (filters: ComplaintFilters = {}) => {
 
   if (filters.targetRole) {
     query = query.eq('target_role', filters.targetRole);
+  }
+
+  if (filters.targetId) {
+    query = query.eq('target_id', filters.targetId);
   }
 
   const { data, error } = await query;
@@ -98,9 +105,10 @@ export const createComplaint = async (complaint: CreateComplaintInput) => {
       type: complaint.type,
       target_id: complaint.targetId,
       target_role: complaint.targetRole,
+      target_type: complaint.targetType || null,
       priority: complaint.priority,
     })
-    .select('id, student_id, student_name, class_name, section, division, title, description, type, target_id, target_role, priority, status, created_at, response, resolved_at')
+    .select('id, student_id, student_name, class_name, section, division, title, description, type, target_id, target_role, target_type, priority, status, created_at, response, resolved_at')
     .single<ComplaintRow>();
 
   if (error) {
@@ -120,7 +128,7 @@ export const resolveComplaint = async (complaintId: string, response?: string) =
       resolved_at: new Date().toISOString(),
     })
     .eq('id', complaintId)
-    .select('id, student_id, student_name, class_name, section, division, title, description, type, target_id, target_role, priority, status, created_at, response, resolved_at')
+    .select('id, student_id, student_name, class_name, section, division, title, description, type, target_id, target_role, target_type, priority, status, created_at, response, resolved_at')
     .single<ComplaintRow>();
 
   if (error) {

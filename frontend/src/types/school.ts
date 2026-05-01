@@ -1,6 +1,7 @@
 export interface ITeacher {
   id: string;
   profileId?: string | null;
+  homeSectionId?: string | null;
   name: string;
   category: string;
   subject: string;

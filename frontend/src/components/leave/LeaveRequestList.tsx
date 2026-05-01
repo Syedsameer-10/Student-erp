@@ -171,7 +171,9 @@ const LeaveRequestList = () => {
             <p className="text-sm text-slate-600 leading-relaxed font-medium">{request.reason}</p>
           </div>
 
-          <div className="text-xs font-semibold text-slate-500">Assigned To: {request.teacherName}</div>
+          <div className="text-xs font-semibold text-slate-500">
+            Assigned To: {request.teacherName} ({request.recipientType})
+          </div>
         </div>
 
         {request.status === 'Pending' && (

@@ -20,7 +20,7 @@ const ComplaintInbox = () => {
       return;
     }
 
-    fetchComplaints({ targetRole })
+    fetchComplaints({ targetRole, targetId: user.id })
       .then((result) => {
         setComplaints(result);
       })
@@ -33,7 +33,7 @@ const ComplaintInbox = () => {
     () =>
       complaints
         .filter((complaint) => {
-          const matchesTarget = complaint.targetRole === targetRole;
+          const matchesTarget = complaint.targetRole === targetRole && complaint.targetId === user?.id;
           const matchesStatus = statusFilter === 'All' || complaint.status === statusFilter;
           const createdAt = complaint.createdAt.split('T')[0];
           const matchesDateFrom = !dateFrom || createdAt >= dateFrom;
@@ -41,7 +41,8 @@ const ComplaintInbox = () => {
           const matchesSearch =
             complaint.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
             complaint.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            complaint.type.toLowerCase().includes(searchQuery.toLowerCase());
+            complaint.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            complaint.targetType?.toLowerCase().includes(searchQuery.toLowerCase());
 
           return matchesTarget && matchesStatus && matchesDateFrom && matchesDateTo && matchesSearch;
         })
@@ -122,6 +123,7 @@ const ComplaintInbox = () => {
                 <th className="px-6 py-4 border-b border-slate-100">Complaint ID</th>
                 <th className="px-6 py-4 border-b border-slate-100">Student Name</th>
                 <th className="px-6 py-4 border-b border-slate-100">Type</th>
+                <th className="px-6 py-4 border-b border-slate-100">Route</th>
                 <th className="px-6 py-4 border-b border-slate-100">Status</th>
                 <th className="px-6 py-4 border-b border-slate-100">Date</th>
                 <th className="px-6 py-4 border-b border-slate-100">Action</th>
@@ -138,6 +140,7 @@ const ComplaintInbox = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-slate-700 font-medium">{complaint.type}</td>
+                  <td className="px-6 py-4 text-slate-600 font-medium">{complaint.targetType || complaint.targetRole}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full ${complaint.status === 'OPEN' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
                       {complaint.status}

@@ -68,6 +68,7 @@ const getNavItems = (role: string) => {
   if (role === 'Governing Body') {
     items.push(
       { name: 'Analytics', icon: BarChart3, path: '/governing/dashboard' },
+      { name: 'Leave Requests', icon: MessageSquare, path: '/governing/leave-requests' },
       { name: 'Complaints', icon: FileText, path: '/governing/complaints' },
       { name: 'Calendar', icon: Calendar, path: '/governing/calendar' },
       { name: 'Reports', icon: FileText, path: '/governing/reports' }

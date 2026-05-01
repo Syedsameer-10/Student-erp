@@ -111,7 +111,7 @@ function App() {
           <Route path="/teacher/attendance" element={<ProtectedRoute allowedRoles={['Teacher']}><AttendanceDashboard /></ProtectedRoute>} />
           <Route path="/teacher/ai-attendance" element={<ProtectedRoute allowedRoles={['Teacher']}><div className="p-8"><AIAttendance /></div></ProtectedRoute>} />
           <Route path="/teacher/marks-entry" element={<ProtectedRoute allowedRoles={['Teacher']}><div className="p-8"><MarksEntry /></div></ProtectedRoute>} />
-          <Route path="/teacher/leave-requests" element={<ProtectedRoute allowedRoles={['Teacher']}><div className="p-8"><LeaveRequestList /></div></ProtectedRoute>} />
+          <Route path="/teacher/leave-requests" element={<ProtectedRoute allowedRoles={['Teacher', 'Governing Body']}><div className="p-8"><LeaveRequestList /></div></ProtectedRoute>} />
           <Route path="/teacher/complaints" element={<ProtectedRoute allowedRoles={['Teacher']}><div className="p-8"><ComplaintInbox /></div></ProtectedRoute>} />
           <Route path="/teacher/assignments" element={<ProtectedRoute allowedRoles={['Teacher']}><Assignments /></ProtectedRoute>} />
           <Route path="/teacher/materials" element={<ProtectedRoute allowedRoles={['Teacher']}><StudyMaterials /></ProtectedRoute>} />
@@ -134,6 +134,7 @@ function App() {
 
           {/* --- Governing Body Routes --- */}
           <Route path="/governing/dashboard" element={<ProtectedRoute allowedRoles={['Governing Body']}><div className="p-8"><GoverningDashboard /></div></ProtectedRoute>} />
+          <Route path="/governing/leave-requests" element={<ProtectedRoute allowedRoles={['Governing Body']}><div className="p-8"><LeaveRequestList /></div></ProtectedRoute>} />
           <Route path="/governing/complaints" element={<ProtectedRoute allowedRoles={['Governing Body']}><div className="p-8"><ComplaintInbox /></div></ProtectedRoute>} />
           <Route path="/governing/calendar" element={<ProtectedRoute allowedRoles={['Governing Body']}><div className="p-8"><Calendar /></div></ProtectedRoute>} />
           <Route path="/governing/reports" element={<ProtectedRoute allowedRoles={['Governing Body']}><ReportsPage /></ProtectedRoute>} />
