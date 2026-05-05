@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Clock,
   FileText,
+  RefreshCw,
   Search,
   XCircle,
 } from 'lucide-react';
@@ -15,6 +16,7 @@ import { fetchTeacherLeaveRequests, updateLeaveRequestStatus, type LeaveRequestR
 const LeaveRequestList = () => {
   const [requests, setRequests] = useState<LeaveRequestRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<LeaveRequestRecord['status'] | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -27,8 +29,12 @@ const LeaveRequestList = () => {
   useEffect(() => {
     let active = true;
 
-    const loadRequests = async () => {
-      setIsLoading(true);
+    const loadRequests = async (mode: 'initial' | 'refresh' = 'initial') => {
+      if (mode === 'initial') {
+        setIsLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
       setError(null);
 
       try {
@@ -43,14 +49,21 @@ const LeaveRequestList = () => {
       } finally {
         if (active) {
           setIsLoading(false);
+          setIsRefreshing(false);
         }
       }
     };
 
+    const handleWindowFocus = () => {
+      void loadRequests('refresh');
+    };
+
     void loadRequests();
+    window.addEventListener('focus', handleWindowFocus);
 
     return () => {
       active = false;
+      window.removeEventListener('focus', handleWindowFocus);
     };
   }, []);
 
@@ -105,6 +118,20 @@ const LeaveRequestList = () => {
       setRequests((current) => current.map((request) => request.id === requestId ? updated : request));
     } catch (updateError: any) {
       setError(updateError?.message || 'Unable to update leave request.');
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    setError(null);
+
+    try {
+      const data = await fetchTeacherLeaveRequests();
+      setRequests(data);
+    } catch (refreshError: any) {
+      setError(refreshError?.message || 'Unable to refresh leave requests.');
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -221,6 +248,14 @@ const LeaveRequestList = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => void handleRefresh()}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+            Refresh
+          </button>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input

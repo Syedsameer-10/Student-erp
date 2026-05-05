@@ -10,7 +10,8 @@ const TeacherDashboard = () => {
   const sections = useClassStore((state) => state.sections);
   const students = useClassStore((state) => state.students);
   const navigate = useNavigate();
-  const assignedClasses = user?.classes || [];
+  const assignedClasses = useMemo(() => user?.classes || [], [user?.classes]);
+  const ownedClass = user?.class;
   const teacherSubjectLabel = user?.subjects?.length ? user.subjects.join(', ') : (user?.subject || 'General');
 
   useEffect(() => {
@@ -29,12 +30,28 @@ const TeacherDashboard = () => {
         <p className="text-slate-500 mt-1">Welcome back, {user?.name}. Manage your classroom and digital resources.</p>
       </div>
 
+      <div className="rounded-3xl border border-emerald-100 bg-emerald-50/80 px-6 py-5 shadow-sm">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">Class Teacher Ownership</p>
+        <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <h2 className="text-2xl font-black text-slate-900">{ownedClass || 'No owned class assigned'}</h2>
+          <button
+            onClick={() => navigate('/teacher/classes')}
+            className="w-fit rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition-colors hover:bg-emerald-700"
+          >
+            Open Roster
+          </button>
+        </div>
+        <p className="mt-2 text-sm font-medium text-emerald-800">
+          Student add/remove controls are enabled only for this class. Subject classes are view-only.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         {[
-          { title: 'My Classes', value: assignedClasses.length.toString(), icon: BookOpen, color: 'bg-indigo-500', path: '/teacher/classes' },
+          { title: 'Owned Class', value: ownedClass || 'None', icon: UserCheck, color: 'bg-emerald-500', path: '/teacher/classes' },
+          { title: 'Assigned Classes', value: assignedClasses.length.toString(), icon: BookOpen, color: 'bg-indigo-500', path: '/teacher/classes' },
           { title: 'Total Students', value: totalStudents.toString(), icon: Users, color: 'bg-blue-500', path: '/teacher/classes' },
           { title: 'Study Materials', value: '12 Items', icon: FileText, color: 'bg-amber-500', path: '/teacher/materials' },
-          { title: 'Progress Marked', value: `${assignedClasses.length - 1}/${assignedClasses.length}`, icon: UserCheck, color: 'bg-emerald-500', path: '/teacher/attendance' },
           { title: 'Upcoming Events', value: '2', icon: Calendar, color: 'bg-violet-500', path: '/teacher/events' },
         ].map((stat, i) => (
           <div 

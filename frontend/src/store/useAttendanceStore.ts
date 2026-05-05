@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
 export interface AttendanceRecord {
   id: string;
@@ -24,25 +23,18 @@ interface AttendanceState {
   getRecordsByDate: (date: string, classId: string) => AttendanceRecord[];
 }
 
-export const useAttendanceStore = create<AttendanceState>()(
-  persist(
-    (set, get) => ({
-      records: [],
-      addRecords: (newRecords) => {
-        const recordsWithIds = newRecords.map(r => ({
-          ...r,
-          id: Math.random().toString(36).substring(7)
-        }));
-        set((state) => ({
-          records: [...state.records, ...recordsWithIds]
-        }));
-      },
-      getRecordsByDate: (date, classId) => {
-        return get().records.filter(r => r.date === date && r.classId === classId);
-      }
-    }),
-    {
-      name: 'attendance-storage',
-    }
-  )
-);
+export const useAttendanceStore = create<AttendanceState>()((set, get) => ({
+  records: [],
+  addRecords: (newRecords) => {
+    const recordsWithIds = newRecords.map(r => ({
+      ...r,
+      id: Math.random().toString(36).substring(7)
+    }));
+    set((state) => ({
+      records: [...state.records, ...recordsWithIds]
+    }));
+  },
+  getRecordsByDate: (date, classId) => {
+    return get().records.filter(r => r.date === date && r.classId === classId);
+  }
+}));

@@ -71,6 +71,11 @@ function App() {
       return;
     }
 
+    if (user.role === 'Student') {
+      resetSchoolData();
+      return;
+    }
+
     void refreshSchoolData();
   }, [initializeSchoolData, isLoading, refreshSchoolData, resetSchoolData, user?.id, user?.role]);
 

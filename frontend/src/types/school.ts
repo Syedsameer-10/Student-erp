@@ -1,7 +1,6 @@
 export interface ITeacher {
   id: string;
   profileId?: string | null;
-  homeSectionId?: string | null;
   name: string;
   category: string;
   subject: string;
@@ -12,6 +11,14 @@ export interface ITeacher {
   email: string;
   assignedClass: string;
   standards?: string[];
+  classTeacherOf?: string;
+  subjectTeacherSections?: string[];
+}
+
+export interface ISectionTeacher {
+  id: string;
+  name: string;
+  subject: string;
 }
 
 export interface IStudent {
@@ -35,6 +42,7 @@ export interface ISection {
   categoryId: string;
   name: string;
   classTeacher: string;
+  subjectTeachers?: ISectionTeacher[];
   strength: number;
   roomNumber?: string;
 }

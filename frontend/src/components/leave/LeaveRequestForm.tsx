@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Calendar, CheckCircle2, FileText, Send, User, BookOpen } from 'lucide-react';
+import { Calendar, CheckCircle2, FileText, RefreshCw, Send, User, BookOpen } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import {
   createLeaveRequest,
@@ -17,6 +17,7 @@ const LeaveRequestForm = () => {
   const { user } = useAuthStore();
   const [submitted, setSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [studentContext, setStudentContext] = useState<Awaited<ReturnType<typeof fetchStudentLeaveContext>>>(null);
   const [recipients, setRecipients] = useState<RecipientOption[]>([]);
@@ -37,8 +38,12 @@ const LeaveRequestForm = () => {
 
     let active = true;
 
-    const loadData = async () => {
-      setIsLoading(true);
+    const loadData = async (mode: 'initial' | 'refresh' = 'initial') => {
+      if (mode === 'initial') {
+        setIsLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
       setError(null);
 
       try {
@@ -50,7 +55,7 @@ const LeaveRequestForm = () => {
         setStudentContext(context);
 
         const [recipientRows, leaveRows] = await Promise.all([
-          context ? fetchRecipientsForStudentContext(context) : Promise.resolve([]),
+          context ? fetchRecipientsForStudentContext(context, { includeSubjectTeachers: false }) : Promise.resolve([]),
           fetchStudentLeaveRequests(),
         ]);
 
@@ -79,14 +84,21 @@ const LeaveRequestForm = () => {
       } finally {
         if (active) {
           setIsLoading(false);
+          setIsRefreshing(false);
         }
       }
     };
 
+    const handleWindowFocus = () => {
+      void loadData('refresh');
+    };
+
     void loadData();
+    window.addEventListener('focus', handleWindowFocus);
 
     return () => {
       active = false;
+      window.removeEventListener('focus', handleWindowFocus);
     };
   }, [user?.id]);
 
@@ -116,7 +128,18 @@ const LeaveRequestForm = () => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!user || !studentContext || !formData.recipientId) {
+    if (!user) {
+      setError('You need to be logged in to submit a leave request.');
+      return;
+    }
+
+    if (!studentContext) {
+      setError('Student profile context is not ready yet. Please refresh and try again.');
+      return;
+    }
+
+    if (!formData.recipientId) {
+      setError('Please choose a valid recipient before submitting.');
       return;
     }
 
@@ -151,6 +174,32 @@ const LeaveRequestForm = () => {
     }
   };
 
+  const handleRefresh = async () => {
+    if (!user?.id) {
+      return;
+    }
+
+    setIsRefreshing(true);
+    setError(null);
+
+    try {
+      const context = await fetchStudentLeaveContext(user.id);
+      setStudentContext(context);
+
+      const [recipientRows, leaveRows] = await Promise.all([
+        context ? fetchRecipientsForStudentContext(context, { includeSubjectTeachers: false }) : Promise.resolve([]),
+        fetchStudentLeaveRequests(),
+      ]);
+
+      setRecipients(recipientRows);
+      setRequests(leaveRows);
+    } catch (refreshError: any) {
+      setError(refreshError?.message || 'Unable to refresh leave request data.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {error && (
@@ -165,7 +214,7 @@ const LeaveRequestForm = () => {
             <FileText size={24} />
             Submit Leave Request
           </h2>
-          <p className="text-indigo-100 text-sm mt-1">Only your own leave requests and your assigned teachers are shown here.</p>
+          <p className="text-indigo-100 text-sm mt-1">Leave requests can only be sent to your class teacher or the governing body.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
@@ -211,7 +260,6 @@ const LeaveRequestForm = () => {
               disabled={isLoading || !recipients.length}
             >
               <option value="Class Teacher">Class Teacher</option>
-              <option value="Subject Teacher">Subject Teacher</option>
               <option value="Governing Body">Governing Body</option>
             </select>
           </div>
@@ -231,13 +279,12 @@ const LeaveRequestForm = () => {
                 <option key={`${recipient.routeType}-${recipient.id}`} value={recipient.id}>
                   {recipient.name}
                   {recipient.subjects.length ? ` - ${recipient.subjects.join(', ')}` : ''}
-                  {recipient.classNames.length ? ` - ${recipient.classNames.join(', ')}` : ''}
                 </option>
               ))}
             </select>
             {!isLoading && !recipientOptions.length && (
               <p className="text-xs font-medium text-amber-600">
-                No matching recipient was found for this route yet. Add class-teacher or subject-teacher mappings in the DB to enable routing.
+                No matching recipient was found for this route yet. Add a class teacher or governing body recipient in the DB to enable routing.
               </p>
             )}
           </div>
@@ -301,6 +348,14 @@ const LeaveRequestForm = () => {
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-slate-900">Leave History</h2>
           <div className="flex gap-2">
+            <button
+              onClick={() => void handleRefresh()}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+              Refresh
+            </button>
             {(['All', 'Pending', 'Approved', 'Rejected'] as const).map((status) => (
               <button
                 key={status}

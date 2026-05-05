@@ -9,7 +9,7 @@ export interface StudentRoutingContext {
   categoryId: string;
   sectionId: string;
   className: string;
-  classTeacher?: string;
+  gender?: 'Male' | 'Female' | 'Other';
 }
 
 export interface RecipientOption {
@@ -34,7 +34,7 @@ export const fetchStudentRoutingContext = async (profileId: string): Promise<Stu
   const client = assertSupabase();
   const { data, error } = await client
     .from('students')
-    .select('id, name, roll_no, category_id, section_id, sections!inner(name, class_teacher)')
+    .select('id, name, roll_no, category_id, section_id, gender, sections!inner(name)')
     .eq('profile_id', profileId)
     .maybeSingle();
 
@@ -53,25 +53,30 @@ export const fetchStudentRoutingContext = async (profileId: string): Promise<Stu
     categoryId: (data as any).category_id,
     sectionId: (data as any).section_id,
     className: (data as any).sections?.name,
-    classTeacher: (data as any).sections?.class_teacher || undefined,
+    gender: (data as any).gender,
   };
 };
 
-export const fetchRecipientsForStudentContext = async (context: StudentRoutingContext) => {
+export const fetchRecipientsForStudentContext = async (
+  context: StudentRoutingContext,
+  options?: { includeSubjectTeachers?: boolean }
+) => {
   const client = assertSupabase();
+  const includeSubjectTeachers = options?.includeSubjectTeachers ?? true;
   const [classTeacherRes, assignmentsRes, governingRes] = await Promise.all([
     client
       .from('teachers')
-      .select('profile_id, name, subjects, category_id')
+      .select('profile_id, name, subject, subjects, category_id')
       .eq('home_section_id', context.sectionId)
-      .not('profile_id', 'is', null)
-      .limit(1),
-    client
-      .from('section_teacher_assignments')
-      .select('teacher_profile_id, role, subject, teachers!inner(name, profile_id, subjects, category_id)')
-      .eq('section_id', context.sectionId)
-      .eq('role', 'Subject Teacher')
-      .order('subject', { ascending: true }),
+      .maybeSingle(),
+    includeSubjectTeachers
+      ? client
+          .from('section_teacher_assignments')
+          .select('teacher_profile_id, role, subject, teachers!inner(name, profile_id, subjects, category_id)')
+          .eq('section_id', context.sectionId)
+          .eq('role', 'Subject Teacher')
+          .order('subject', { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
     client
       .from('profiles')
       .select('id, name, role')
@@ -111,17 +116,23 @@ export const fetchRecipientsForStudentContext = async (context: StudentRoutingCo
   }>;
 
   const dedupedTeacherRecipients = new Map<string, RecipientOption>();
+  const classTeacher = classTeacherRes.data as {
+    profile_id: string | null;
+    name: string;
+    subject: string | null;
+    subjects: string[] | null;
+    category_id: string;
+  } | null;
 
-  const classTeacher = (classTeacherRes.data || [])[0] as any;
   if (classTeacher?.profile_id) {
     dedupedTeacherRecipients.set(`Class Teacher:${classTeacher.profile_id}`, {
       id: classTeacher.profile_id,
       name: classTeacher.name,
       role: 'Teacher',
       routeType: 'Class Teacher',
-      subjects: (classTeacher.subjects || []) as string[],
+      subjects: classTeacher.subject ? [classTeacher.subject] : ['General'],
       classNames: [context.className],
-      department: classTeacher.category_id as string,
+      department: classTeacher.category_id,
     });
   }
 
@@ -134,13 +145,13 @@ export const fetchRecipientsForStudentContext = async (context: StudentRoutingCo
 
     const key = `${assignment.role}:${profileId}`;
     const existing = dedupedTeacherRecipients.get(key);
-    const subjects = Array.from(new Set([...(existing?.subjects || []), assignment.subject, ...(teacher.subjects || [])].filter(Boolean)));
+    const subjects = Array.from(new Set([...(existing?.subjects || []), assignment.subject].filter(Boolean)));
 
     dedupedTeacherRecipients.set(key, {
       id: profileId,
       name: teacher.name,
       role: 'Teacher' as const,
-      routeType: 'Subject Teacher',
+      routeType: assignment.role,
       subjects,
       classNames: [context.className],
       department: teacher.category_id,

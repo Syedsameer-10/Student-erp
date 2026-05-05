@@ -14,7 +14,11 @@ const AttendanceDashboard = () => {
   const { user } = useAuthStore();
   const initialize = useClassStore((state) => state.initialize);
   const sections = useClassStore((state) => state.sections);
-  const [selectedClass, setSelectedClass] = useState(user?.classes?.[0] || user?.class || '10-A');
+  const teacherOwnedClass = user?.role === 'Teacher' ? user?.class : undefined;
+  const selectableClasses = user?.role === 'Teacher'
+    ? (teacherOwnedClass ? [teacherOwnedClass] : [])
+    : sections.map((section) => section.name);
+  const [selectedClass, setSelectedClass] = useState(teacherOwnedClass || user?.class || '10-A');
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceRows, setAttendanceRows] = useState<AttendanceSheetRow[]>([]);
   const [studentSummary, setStudentSummary] = useState<{
@@ -33,6 +37,12 @@ const AttendanceDashboard = () => {
   }, [initialize]);
 
   useEffect(() => {
+    if (user?.role === 'Teacher') {
+      setSelectedClass(teacherOwnedClass || '');
+    }
+  }, [teacherOwnedClass, user?.role]);
+
+  useEffect(() => {
     if (user?.role === 'Student' && user.id) {
       void (async () => {
         const student = await fetchStudentByProfile(user.id);
@@ -44,25 +54,45 @@ const AttendanceDashboard = () => {
       return;
     }
 
+    if (user?.role === 'Teacher' && !teacherOwnedClass) {
+      setAttendanceRows([]);
+      return;
+    }
+
     if (user?.role === 'Admin' || user?.role === 'Teacher') {
       setIsLoading(true);
       void fetchAttendanceSheet(selectedClass, attendanceDate)
         .then((rows) => setAttendanceRows(rows))
         .finally(() => setIsLoading(false));
     }
-  }, [attendanceDate, selectedClass, user?.id, user?.role]);
+  }, [attendanceDate, selectedClass, teacherOwnedClass, user?.id, user?.role]);
 
   const handleMark = (id: string, status: 'Present' | 'Absent') => {
+    if (user?.role === 'Teacher' && selectedClass !== teacherOwnedClass) {
+      setNotice('Only the class teacher can edit attendance for this class.');
+      return;
+    }
+
     setAttendanceRows((current) =>
       current.map((student) => (student.id === id ? { ...student, attendanceStatus: status } : student))
     );
   };
 
   const handleBulk = (status: 'Present' | 'Absent') => {
+    if (user?.role === 'Teacher' && selectedClass !== teacherOwnedClass) {
+      setNotice('Only the class teacher can edit attendance for this class.');
+      return;
+    }
+
     setAttendanceRows((current) => current.map((student) => ({ ...student, attendanceStatus: status })));
   };
 
   const submitAttendance = async () => {
+    if (user?.role === 'Teacher' && selectedClass !== teacherOwnedClass) {
+      setNotice('Only the class teacher can submit attendance for this class.');
+      return;
+    }
+
     setIsSaving(true);
     try {
       await upsertManualAttendance(selectedClass, attendanceDate, attendanceRows);
@@ -162,7 +192,7 @@ const AttendanceDashboard = () => {
               onChange={(e) => setSelectedClass(e.target.value)}
               className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-200 outline-none"
             >
-              {(user?.classes || sections.map((section) => section.name)).map((className) => (
+              {selectableClasses.map((className) => (
                 <option key={className} value={className}>Class {className}</option>
               ))}
             </select>
@@ -174,10 +204,10 @@ const AttendanceDashboard = () => {
             />
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
-            <button onClick={() => handleBulk('Present')} className="flex-1 sm:flex-none px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-sm font-medium hover:bg-emerald-100 transition-colors">
+            <button onClick={() => handleBulk('Present')} disabled={user?.role === 'Teacher' && selectedClass !== teacherOwnedClass} className="flex-1 sm:flex-none px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-sm font-medium hover:bg-emerald-100 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
               Mark All Present
             </button>
-            <button onClick={() => handleBulk('Absent')} className="flex-1 sm:flex-none px-4 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-sm font-medium hover:bg-rose-100 transition-colors">
+            <button onClick={() => handleBulk('Absent')} disabled={user?.role === 'Teacher' && selectedClass !== teacherOwnedClass} className="flex-1 sm:flex-none px-4 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-sm font-medium hover:bg-rose-100 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
               Mark All Absent
             </button>
           </div>
@@ -250,7 +280,7 @@ const AttendanceDashboard = () => {
         </div>
 
         <div className="p-4 border-t border-slate-100 flex justify-end bg-slate-50/50">
-          <button onClick={() => void submitAttendance()} disabled={isSaving || isLoading || attendanceRows.length === 0} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-600/20 disabled:opacity-60">
+          <button onClick={() => void submitAttendance()} disabled={isSaving || isLoading || attendanceRows.length === 0 || (user?.role === 'Teacher' && selectedClass !== teacherOwnedClass)} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-600/20 disabled:opacity-60">
             {isSaving ? 'Saving...' : 'Submit Attendance Log'}
           </button>
         </div>

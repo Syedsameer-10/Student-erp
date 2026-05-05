@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
 export type ComplaintStatus = 'OPEN' | 'RESOLVED';
-export type ComplaintType = 'Academic' | 'Infrastructure' | 'Discipline' | 'Hostel' | 'Other';
+export type ComplaintType = 'Academic' | 'Infrastructure' | 'Discipline' | 'Hostel' | 'Fees' | 'Other';
 export type ComplaintPriority = 'Low' | 'Medium' | 'High';
 export type ComplaintDivision = 'Boys' | 'Girls';
 
@@ -33,39 +32,34 @@ interface ComplaintState {
   updateComplaint: (id: string, status: ComplaintStatus, response?: string) => void;
 }
 
-export const useComplaintStore = create<ComplaintState>()(
-  persist(
-    (set) => ({
-      complaints: [],
-      setComplaints: (complaints) => set({ complaints }),
-      syncComplaint: (complaint) =>
-        set((state) => {
-          const exists = state.complaints.some((item) => item.id === complaint.id);
+export const useComplaintStore = create<ComplaintState>()((set) => ({
+  complaints: [],
+  setComplaints: (complaints) => set({ complaints }),
+  syncComplaint: (complaint) =>
+    set((state) => {
+      const exists = state.complaints.some((item) => item.id === complaint.id);
 
-          if (!exists) {
-            return {
-              complaints: [complaint, ...state.complaints],
-            };
-          }
+      if (!exists) {
+        return {
+          complaints: [complaint, ...state.complaints],
+        };
+      }
 
-          return {
-            complaints: state.complaints.map((item) => (item.id === complaint.id ? complaint : item)),
-          };
-        }),
-      updateComplaint: (id, status, response) =>
-        set((state) => ({
-          complaints: state.complaints.map((complaint) =>
-            complaint.id === id
-              ? {
-                  ...complaint,
-                  status,
-                  response,
-                  resolvedAt: status === 'RESOLVED' ? new Date().toISOString() : complaint.resolvedAt,
-                }
-              : complaint
-          ),
-        })),
+      return {
+        complaints: state.complaints.map((item) => (item.id === complaint.id ? complaint : item)),
+      };
     }),
-    { name: 'complaint-storage' }
-  )
-);
+  updateComplaint: (id, status, response) =>
+    set((state) => ({
+      complaints: state.complaints.map((complaint) =>
+        complaint.id === id
+          ? {
+              ...complaint,
+              status,
+              response,
+              resolvedAt: status === 'RESOLVED' ? new Date().toISOString() : complaint.resolvedAt,
+            }
+          : complaint
+      ),
+    })),
+}));

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, BookOpen, Plus, Trash2, Users } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useClassStore } from '../../store/useClassStore';
+import { fetchTeacherMarkScopes, type TeacherMarkScope } from '../../services/marks';
 
 const TeacherClasses = () => {
   const user = useAuthStore((state) => state.user);
@@ -16,20 +17,54 @@ const TeacherClasses = () => {
   const [showForm, setShowForm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [markScopes, setMarkScopes] = useState<TeacherMarkScope[]>([]);
 
   useEffect(() => {
     void initialize();
   }, [initialize]);
 
+  useEffect(() => {
+    if (!user?.id || user.role !== 'Teacher') {
+      setMarkScopes([]);
+      return;
+    }
+
+    void fetchTeacherMarkScopes(user.id)
+      .then(setMarkScopes)
+      .catch(console.error);
+  }, [user?.id, user?.role]);
+
   const allowedClasses = useMemo(
     () => Array.from(new Set([...(user?.classes || []), ...(user?.standards || [])])),
     [user?.classes, user?.standards]
   );
+  const ownedClass = user?.class;
 
-  const visibleSections = useMemo(
-    () => sections.filter((section) => allowedClasses.includes(section.name)),
-    [sections, allowedClasses]
+  const subjectsByClassName = useMemo(
+    () =>
+      markScopes.reduce<Record<string, string[]>>((acc, scope) => {
+        const current = acc[scope.className] || [];
+        if (!current.includes(scope.subject)) {
+          current.push(scope.subject);
+        }
+        acc[scope.className] = current;
+        return acc;
+      }, {}),
+    [markScopes]
   );
+
+  const visibleSections = useMemo(() => {
+    const scopedSections = sections.filter((section) => allowedClasses.includes(section.name));
+    return [...scopedSections].sort((left, right) => {
+      if (left.name === ownedClass && right.name !== ownedClass) {
+        return -1;
+      }
+      if (right.name === ownedClass && left.name !== ownedClass) {
+        return 1;
+      }
+      return left.name.localeCompare(right.name);
+    });
+  }, [allowedClasses, ownedClass, sections]);
 
   useEffect(() => {
     if (!visibleSections.length) {
@@ -43,16 +78,24 @@ const TeacherClasses = () => {
   }, [activeSectionId, visibleSections]);
 
   const activeSection = visibleSections.find((section) => section.id === activeSectionId) ?? null;
+  const canEditActiveSection = !!activeSection && activeSection.name === ownedClass;
 
   const visibleStudents = useMemo(
     () => students.filter((student) => student.sectionId === activeSectionId),
     [students, activeSectionId]
   );
 
+  useEffect(() => {
+    if (!canEditActiveSection) {
+      setShowForm(false);
+    }
+  }, [canEditActiveSection]);
+
   const handleAddStudent = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!activeSection) {
+    if (!activeSection || !canEditActiveSection) {
+      setError('You can edit only your own class section.');
       return;
     }
 
@@ -85,6 +128,10 @@ const TeacherClasses = () => {
 
   const handleDeleteStudent = async (studentId: string) => {
     setError(null);
+    if (!canEditActiveSection) {
+      setError('You can edit only your own class section.');
+      return;
+    }
 
     try {
       await deleteStudent(studentId);
@@ -100,13 +147,13 @@ const TeacherClasses = () => {
           <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Teacher Access</p>
           <h1 className="mt-2 text-3xl font-black text-slate-900">My Class Roster</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-500">
-            You can view and manage only the sections assigned to your teacher profile.
+            You can view assigned subject sections, but student edits are limited to your own class.
           </p>
         </div>
         <div className="rounded-3xl border border-slate-100 bg-white px-5 py-4 shadow-sm">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Allowed Classes</p>
-          <p className="mt-2 text-sm font-bold text-slate-700">
-            {allowedClasses.length ? allowedClasses.join(', ') : 'No classes assigned yet'}
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Owned Class</p>
+          <p className="mt-2 text-sm font-bold text-emerald-700">
+            {ownedClass || 'No owned class assigned yet'}
           </p>
         </div>
       </div>
@@ -128,7 +175,7 @@ const TeacherClasses = () => {
           <BookOpen size={36} className="mx-auto text-slate-200" />
           <h2 className="mt-4 text-xl font-black text-slate-900">No classes assigned</h2>
           <p className="mt-2 text-sm text-slate-500">
-            Add class names to this teacher&apos;s `profiles.classes` or `profiles.standards` arrays in Supabase.
+            Add this teacher to a section in the section teacher assignments table.
           </p>
         </div>
       )}
@@ -139,14 +186,18 @@ const TeacherClasses = () => {
             {visibleSections.map((section) => {
               const sectionStudents = students.filter((student) => student.sectionId === section.id);
               const isActive = section.id === activeSectionId;
+              const isOwned = section.name === ownedClass;
+              const handledSubjects = subjectsByClassName[section.name] || [];
 
               return (
                 <button
                   key={section.id}
                   onClick={() => setActiveSectionId(section.id)}
                   className={`rounded-[2rem] border p-6 text-left shadow-sm transition-all ${
-                    isActive
-                      ? 'border-emerald-200 bg-emerald-50/60 shadow-emerald-100'
+                    isOwned
+                      ? 'border-emerald-300 bg-emerald-50/80 shadow-emerald-100'
+                      : isActive
+                        ? 'border-indigo-200 bg-indigo-50/60 shadow-indigo-100'
                       : 'border-slate-100 bg-white hover:-translate-y-1 hover:shadow-lg'
                   }`}
                 >
@@ -154,6 +205,9 @@ const TeacherClasses = () => {
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Section</p>
                       <h2 className="mt-2 text-2xl font-black text-slate-900">{section.name}</h2>
+                      <p className={`mt-2 w-fit rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${isOwned ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                        {isOwned ? 'Own Class' : 'Subject Class'}
+                      </p>
                     </div>
                     <div className="rounded-2xl bg-white px-4 py-3 text-center shadow-sm">
                       <p className="text-lg font-black text-slate-900">{sectionStudents.length}</p>
@@ -161,7 +215,8 @@ const TeacherClasses = () => {
                     </div>
                   </div>
                   <div className="mt-6 space-y-2 text-sm text-slate-600">
-                    <p>Teacher: <span className="font-semibold text-slate-900">{section.classTeacher}</span></p>
+                    <p>Class Teacher: <span className="font-semibold text-slate-900">{section.classTeacher}</span></p>
+                    <p>My Subject: <span className="font-semibold text-slate-900">{handledSubjects.length ? handledSubjects.join(', ') : 'Class oversight'}</span></p>
                     <p>Room: <span className="font-semibold text-slate-900">{section.roomNumber || 'TBD'}</span></p>
                   </div>
                 </button>
@@ -176,12 +231,15 @@ const TeacherClasses = () => {
                   <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Roster</p>
                   <h2 className="mt-2 text-3xl font-black text-slate-900">{activeSection.name}</h2>
                   <p className="mt-2 text-sm text-slate-500">
-                    Student records in this section are editable only for the assigned teacher scope.
+                    {canEditActiveSection
+                      ? 'You own this class, so roster edits are enabled.'
+                      : 'This is a subject-teacher section, so roster edits are locked.'}
                   </p>
                 </div>
                 <button
                   onClick={() => setShowForm((current) => !current)}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition-colors hover:bg-emerald-700"
+                  disabled={!canEditActiveSection}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {showForm ? <ArrowLeft size={16} /> : <Plus size={16} />}
                   {showForm ? 'Close Form' : 'Add Student'}
@@ -256,8 +314,9 @@ const TeacherClasses = () => {
                               <div className="flex justify-end">
                                 <button
                                   onClick={() => void handleDeleteStudent(student.id)}
-                                  className="rounded-2xl bg-rose-50 p-3 text-rose-500 transition-colors hover:bg-rose-100"
-                                  title="Remove student"
+                                  disabled={!canEditActiveSection}
+                                  className="rounded-2xl bg-rose-50 p-3 text-rose-500 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                  title={canEditActiveSection ? 'Remove student' : 'Only the class teacher can edit this class'}
                                 >
                                   <Trash2 size={16} />
                                 </button>

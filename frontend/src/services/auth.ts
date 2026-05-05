@@ -20,13 +20,54 @@ interface ProfileRow {
   name: string | null;
   email: string | null;
   role: string | null;
-  standard: string | null;
-  class_name: string | null;
-  section: string | null;
-  standards: string[] | null;
-  classes: string[] | null;
+}
+
+interface StudentProfileRow {
+  section_id: string;
+  sections:
+    | {
+        name: string | null;
+      }
+    | Array<{
+        name: string | null;
+      }>
+    | null;
+}
+
+interface TeacherProfileRow {
   subject: string | null;
   subjects: string[] | null;
+  home_section:
+    | {
+        name: string | null;
+      }
+    | Array<{
+        name: string | null;
+      }>
+    | null;
+}
+
+interface SectionTeacherAssignmentRow {
+  role: 'Class Teacher' | 'Subject Teacher';
+  subject: string | null;
+  sections:
+    | {
+        name: string | null;
+      }
+    | Array<{
+        name: string | null;
+      }>
+    | null;
+}
+
+interface UserRoleContext {
+  standard?: string;
+  className?: string;
+  section?: string;
+  standards?: string[];
+  classes?: string[];
+  subject?: string;
+  subjects?: string[];
 }
 
 const assertSupabase = () => {
@@ -37,25 +78,129 @@ const assertSupabase = () => {
   return supabase;
 };
 
-const mapProfileToUser = (session: Session, profile: ProfileRow | null): AuthenticatedUser => ({
-  id: session.user.id,
-  name: profile?.name || session.user.user_metadata?.name || session.user.email || 'User',
-  email: profile?.email || session.user.email || '',
-  role: profile?.role || session.user.user_metadata?.role || 'Student',
-  standard: profile?.standard || undefined,
-  class: profile?.class_name || undefined,
-  section: profile?.section || undefined,
-  standards: profile?.standards || undefined,
-  classes: profile?.classes || undefined,
-  subject: profile?.subject || profile?.subjects?.[0] || undefined,
-  subjects: profile?.subjects || (profile?.subject ? [profile.subject] : undefined),
-});
+const singleRelation = <T>(value: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(value)) {
+    return value[0] || null;
+  }
+
+  return value || null;
+};
+
+const compactUnique = (values: Array<string | null | undefined>) =>
+  Array.from(new Set(values.map((value) => value?.trim()).filter(Boolean) as string[]));
+
+const splitClassName = (className?: string) => {
+  if (!className) {
+    return {};
+  }
+
+  const [standard, section] = className.split('-');
+  return {
+    standard: standard || undefined,
+    section: section || undefined,
+  };
+};
+
+const fetchStudentProfile = async (profileId: string): Promise<UserRoleContext> => {
+  const client = assertSupabase();
+  const { data, error } = await client
+    .from('students')
+    .select('section_id, sections!inner(name)')
+    .eq('profile_id', profileId)
+    .maybeSingle<StudentProfileRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  const section = singleRelation(data?.sections);
+  const className = section?.name || undefined;
+
+  return {
+    className,
+    classes: className ? [className] : undefined,
+    ...splitClassName(className),
+  };
+};
+
+const fetchTeacherProfile = async (profileId: string): Promise<UserRoleContext> => {
+  const client = assertSupabase();
+  const [teacherRes, assignmentsRes] = await Promise.all([
+    client
+      .from('teachers')
+      .select('subject, subjects, home_section:sections!teachers_home_section_id_fkey(name)')
+      .eq('profile_id', profileId)
+      .maybeSingle<TeacherProfileRow>(),
+    client
+      .from('section_teacher_assignments')
+      .select('role, subject, sections!inner(name)')
+      .eq('teacher_profile_id', profileId),
+  ]);
+
+  if (teacherRes.error) {
+    throw teacherRes.error;
+  }
+
+  if (assignmentsRes.error) {
+    throw assignmentsRes.error;
+  }
+
+  const teacher = teacherRes.data;
+  const assignmentRows = (assignmentsRes.data || []) as SectionTeacherAssignmentRow[];
+  const assignmentClasses = assignmentRows.map((row) => singleRelation(row.sections)?.name);
+  const homeClass = singleRelation(teacher?.home_section)?.name || undefined;
+  const classes = compactUnique([homeClass, ...assignmentClasses]);
+  const primaryClass = homeClass || assignmentClasses[0];
+  const assignedSubjects = assignmentRows
+    .filter((row) => row.role === 'Subject Teacher')
+    .map((row) => row.subject);
+  const subjects = compactUnique([teacher?.subject, ...(teacher?.subjects || []), ...assignedSubjects]);
+
+  return {
+    className: primaryClass || undefined,
+    classes: classes.length ? classes : undefined,
+    standards: classes.length ? classes : undefined,
+    subject: teacher?.subject || subjects[0],
+    subjects: subjects.length ? subjects : undefined,
+    ...splitClassName(primaryClass || undefined),
+  };
+};
+
+const mapProfileToUser = async (session: Session, profile: ProfileRow | null): Promise<AuthenticatedUser> => {
+  const role = profile?.role || session.user.user_metadata?.role || 'Student';
+  let roleContext: UserRoleContext = {};
+
+  try {
+    roleContext =
+      role === 'Student'
+        ? await fetchStudentProfile(session.user.id)
+        : role === 'Teacher'
+          ? await fetchTeacherProfile(session.user.id)
+          : {};
+  } catch (error) {
+    console.error(`Failed to load ${role.toLowerCase()} role context:`, error);
+  }
+
+  return {
+    id: session.user.id,
+    name: profile?.name || session.user.user_metadata?.name || session.user.email || 'User',
+    email: profile?.email || session.user.email || '',
+    role,
+    standard: roleContext.standard,
+    class: roleContext.className,
+    section: roleContext.section,
+    standards: roleContext.standards,
+    classes: roleContext.classes,
+    subject: roleContext.subject,
+    subjects: roleContext.subjects,
+  };
+};
 
 const getSessionProfile = async (session: Session): Promise<AuthenticatedUser> => {
   const client = assertSupabase();
   const { data, error } = await client
     .from('profiles')
-    .select('id, name, email, role, standard, class_name, section, standards, classes, subject, subjects')
+    .select('id, name, email, role')
     .eq('id', session.user.id)
     .maybeSingle<ProfileRow>();
 

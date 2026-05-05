@@ -221,6 +221,7 @@ export default function ClassesDashboard() {
                                         <p className="text-xs font-bold text-slate-400 mt-1 flex items-center gap-1"><UserCheck size={11} />{sec.classTeacher}</p>
                                         <div className="mt-5 pt-4 border-t border-slate-200 flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-300">
                                             <span>{store.students.filter(s => s.sectionId === sec.id).length} Students</span>
+                                            <span>{1 + (sec.subjectTeachers?.length || 0)} Teachers</span>
                                             <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                                         </div>
                                     </div>
@@ -275,6 +276,7 @@ export default function ClassesDashboard() {
     // ── SECTION PAGE ───────────────────────────────────────────────
     if (view === 'SECTION') {
         const students = store.students.filter(s => s.sectionId === activeSectionID);
+        const subjectTeachers = activeSection?.subjectTeachers || [];
 
         return (
             <div className="p-10 max-w-7xl mx-auto min-h-screen">
@@ -297,6 +299,7 @@ export default function ClassesDashboard() {
                         <h1 className="text-6xl font-black tracking-tighter mb-4">{activeSection?.name} Enrollment</h1>
                         <div className="flex flex-wrap gap-6 text-slate-400 font-bold">
                             <span className="flex items-center gap-2"><UserCheck className="text-teal-400" size={18} /> Lead: {activeSection?.classTeacher}</span>
+                            <span className="flex items-center gap-2"><Users className="text-indigo-400" size={18} /> Subject Faculty: {subjectTeachers.length}/4</span>
                             <span className="flex items-center gap-2"><Building2 className="text-blue-400" size={18} /> Room: {activeSection?.roomNumber || 'TBD'}</span>
                         </div>
                     </div>
@@ -304,6 +307,28 @@ export default function ClassesDashboard() {
                         <span className="text-6xl font-black tracking-tighter leading-none">{students.length}</span>
                         <span className="text-[11px] font-black uppercase tracking-widest text-teal-400 mt-2">Enrolled</span>
                     </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-12">
+                    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm md:col-span-1">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 mb-3">Class Teacher</p>
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-black">{activeSection?.classTeacher?.[0] || 'U'}</div>
+                            <div>
+                                <p className="font-black text-slate-800 leading-tight">{activeSection?.classTeacher || 'Unassigned'}</p>
+                                <p className="text-[10px] font-bold text-teal-500">Home Section</p>
+                            </div>
+                        </div>
+                    </div>
+                    {subjectTeachers.map((teacher) => (
+                        <div key={`${teacher.id}-${teacher.subject}`} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 mb-3">{teacher.subject}</p>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">{teacher.name[0]}</div>
+                                <p className="font-black text-slate-800 leading-tight">{teacher.name}</p>
+                            </div>
+                        </div>
+                    ))}
                 </div>
 
                 {/* Student Rows */}
@@ -401,7 +426,8 @@ export default function ClassesDashboard() {
                                 { l: 'Subject Specialty', v: activeProfile.subject, i: BookOpen },
                                 { l: 'Qualification', v: activeProfile.qualification, i: Award },
                                 { l: 'Experience', v: activeProfile.experience, i: Briefcase },
-                                { l: 'Assigned Class', v: activeProfile.assignedClass || activeClass?.name, i: MapPin },
+                                { l: 'Class Teacher Of', v: activeProfile.classTeacherOf || 'Not assigned', i: UserCheck },
+                                { l: 'Subject Sections', v: activeProfile.subjectTeacherSections?.join(', ') || 'Not assigned', i: MapPin },
                                 { l: 'Contact', v: activeProfile.contact, i: Phone },
                                 { l: 'System ID', v: activeProfile.id?.slice(0, 12), i: Shield },
                             ].map((item, i) => (

@@ -41,7 +41,7 @@ const divisionCards: { title: ComplaintDivision; description: string }[] = [
   },
 ];
 
-const complaintTypes: ComplaintType[] = ['Academic', 'Hostel', 'Discipline', 'Infrastructure', 'Other'];
+const complaintTypes: ComplaintType[] = ['Academic', 'Hostel', 'Discipline', 'Infrastructure', 'Fees', 'Other'];
 const priorities: ComplaintPriority[] = ['Low', 'Medium', 'High'];
 
 const formatTrackingId = (complaintId: string) => complaintId.replace(/^cmp/i, 'CMP');
@@ -66,6 +66,18 @@ const ComplaintForm = () => {
     priority: 'Medium' as ComplaintPriority,
     createdAt: new Date().toISOString().split('T')[0],
   });
+
+  const allowedDivision = useMemo<ComplaintDivision | null>(() => {
+    if (studentContext?.gender === 'Female') {
+      return 'Girls';
+    }
+
+    if (studentContext?.gender === 'Male') {
+      return 'Boys';
+    }
+
+    return null;
+  }, [studentContext?.gender]);
 
   const studentComplaints = useMemo(
     () =>
@@ -98,6 +110,7 @@ const ComplaintForm = () => {
 
           return {
             ...current,
+            division: allowedDivision || current.division,
             recipientId: current.recipientId || nextRecipient,
           };
         });
@@ -105,7 +118,15 @@ const ComplaintForm = () => {
       .catch((error) => {
         console.error('Failed to fetch complaint context:', error);
       });
-  }, [setComplaints, user?.id]);
+  }, [allowedDivision, setComplaints, user?.id]);
+
+  useEffect(() => {
+    if (!allowedDivision) {
+      return;
+    }
+
+    setFormData((current) => ({ ...current, division: allowedDivision }));
+  }, [allowedDivision]);
 
   const recipientOptions = useMemo(
     () => recipients.filter((recipient) => recipient.routeType === formData.sendTo),
@@ -133,6 +154,10 @@ const ComplaintForm = () => {
   }, [isFormHighlighted]);
 
   const handleDivisionSelect = (division: ComplaintDivision) => {
+    if (allowedDivision && division !== allowedDivision) {
+      return;
+    }
+
     setFormData((current) => ({ ...current, division }));
     setIsFormHighlighted(true);
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -150,6 +175,12 @@ const ComplaintForm = () => {
     const selectedRecipient = recipientOptions.find((recipient) => recipient.id === formData.recipientId);
     if (!selectedRecipient) {
       setErrorMessage('Please choose a valid complaint recipient.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (allowedDivision && formData.division !== allowedDivision) {
+      setErrorMessage(`Complaints for this student must go through the ${allowedDivision} division.`);
       setIsSubmitting(false);
       return;
     }
@@ -226,9 +257,10 @@ const ComplaintForm = () => {
               key={card.title}
               type="button"
               onClick={() => handleDivisionSelect(card.title)}
+              disabled={!!allowedDivision && allowedDivision !== card.title}
               className={`text-left bg-white rounded-3xl border shadow-xl shadow-slate-200/40 overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${
                 isActive ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-100'
-              }`}
+              } ${allowedDivision && allowedDivision !== card.title ? 'cursor-not-allowed opacity-50 hover:translate-y-0 hover:shadow-xl' : ''}`}
             >
               <div className="bg-indigo-600 px-6 py-5 text-white">
                 <h2 className="text-xl font-bold">{card.title} Division</h2>
@@ -305,10 +337,16 @@ const ComplaintForm = () => {
                   value={formData.division}
                   onChange={(event) => setFormData((current) => ({ ...current, division: event.target.value as ComplaintDivision }))}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 hover:border-indigo-300 bg-slate-50/50 transition-all outline-none"
+                  disabled={!!allowedDivision}
                 >
                   <option value="Boys">Boys</option>
                   <option value="Girls">Girls</option>
                 </select>
+                {allowedDivision && (
+                  <p className="text-xs font-medium text-slate-500">
+                    This student is restricted to the {allowedDivision} division based on the student profile.
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -376,10 +414,14 @@ const ComplaintForm = () => {
                   <option key={`${recipient.routeType}-${recipient.id}`} value={recipient.id}>
                     {recipient.name}
                     {recipient.subjects.length ? ` - ${recipient.subjects.join(', ')}` : ''}
-                    {recipient.classNames.length ? ` - ${recipient.classNames.join(', ')}` : ''}
                   </option>
                 ))}
               </select>
+              {!recipientOptions.length && (
+                <p className="text-xs font-medium text-amber-600">
+                  No matching recipient was found for this student&apos;s section staffing.
+                </p>
+              )}
             </div>
 
             <div className="space-y-3">

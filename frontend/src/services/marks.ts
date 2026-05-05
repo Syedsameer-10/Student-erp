@@ -29,6 +29,12 @@ export interface TeacherMarkSheetRow {
   maxMarks: number;
 }
 
+export interface TeacherMarkScope {
+  className: string;
+  sectionId: string;
+  subject: string;
+}
+
 const assertSupabase = () => {
   if (!supabase) {
     throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env file.');
@@ -60,6 +66,60 @@ export const fetchSubjectsForClass = async (className: string) => {
   }
 
   return (data || []).map((row: any) => row.name as string);
+};
+
+export const fetchTeacherMarkScopes = async (teacherProfileId: string): Promise<TeacherMarkScope[]> => {
+  const client = assertSupabase();
+  const [subjectAssignmentsRes, teacherRes] = await Promise.all([
+    client
+      .from('section_teacher_assignments')
+      .select('section_id, subject, sections!inner(name)')
+      .eq('teacher_profile_id', teacherProfileId)
+      .eq('role', 'Subject Teacher')
+      .order('subject', { ascending: true }),
+    client
+      .from('teachers')
+      .select('home_section_id, subject, subjects, home_section:sections!teachers_home_section_id_fkey(name)')
+      .eq('profile_id', teacherProfileId)
+      .maybeSingle(),
+  ]);
+
+  if (subjectAssignmentsRes.error) {
+    throw subjectAssignmentsRes.error;
+  }
+
+  if (teacherRes.error) {
+    throw teacherRes.error;
+  }
+
+  const assignmentScopes = (subjectAssignmentsRes.data || []).map((row: any) => {
+    const section = Array.isArray(row.sections) ? row.sections[0] : row.sections;
+    return {
+      className: section?.name as string,
+      sectionId: row.section_id as string,
+      subject: row.subject as string,
+    };
+  }).filter((row) => row.className && row.sectionId && row.subject);
+
+  const teacherRow: any = teacherRes.data;
+  const homeSection = teacherRow?.home_section ? (Array.isArray(teacherRow.home_section) ? teacherRow.home_section[0] : teacherRow.home_section) : null;
+  const ownSubjects = teacherRow?.subject ? [teacherRow.subject] : [];
+  const ownClassScopes = homeSection?.name && teacherRow?.home_section_id
+    ? ownSubjects.map((subject: string) => ({
+        className: homeSection.name as string,
+        sectionId: teacherRow.home_section_id as string,
+        subject,
+      }))
+    : [];
+
+  return Array.from(
+    new Map(
+      [...assignmentScopes, ...ownClassScopes].map((scope) => [
+        `${scope.sectionId}:${scope.subject.toLowerCase()}`,
+        scope,
+      ])
+    ).values()
+  );
 };
 
 export const fetchTeacherMarkSheet = async (className: string, subject: string, examType: ExamType) => {

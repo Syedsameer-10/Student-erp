@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, CheckCircle, AlertCircle, Users, BookOpen, GraduationCap } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
-import { fetchSubjectsForClass, fetchTeacherMarkSheet, MARK_EXAMS, upsertStudentMark, type ExamType, type TeacherMarkSheetRow } from '../../services/marks';
+import { fetchSubjectsForClass, fetchTeacherMarkScopes, fetchTeacherMarkSheet, MARK_EXAMS, upsertStudentMark, type ExamType, type TeacherMarkScope, type TeacherMarkSheetRow } from '../../services/marks';
 
 const MarksEntry = () => {
   const { user } = useAuthStore();
-  const allowedClasses = user?.classes || [];
-  const allowedSubjects = user?.subjects?.length ? user.subjects : (user?.subject ? [user.subject] : []);
+  const [markScopes, setMarkScopes] = useState<TeacherMarkScope[]>([]);
+  const allowedClasses = useMemo(
+    () => user?.role === 'Teacher'
+      ? Array.from(new Set(markScopes.map((scope) => scope.className)))
+      : (user?.classes || []),
+    [markScopes, user?.classes, user?.role]
+  );
+  const allowedSubjects = useMemo(
+    () => user?.subjects?.length ? user.subjects : (user?.subject ? [user.subject] : []),
+    [user?.subject, user?.subjects]
+  );
   const [selectedClass, setSelectedClass] = useState(allowedClasses[0] || '');
   const [subjects, setSubjects] = useState<string[]>([]);
   const [selectedSubject, setSelectedSubject] = useState(allowedSubjects[0] || '');
@@ -15,7 +24,33 @@ const MarksEntry = () => {
   const [notification, setNotification] = useState<string | null>(null);
 
   useEffect(() => {
+    if (user?.role !== 'Teacher' || !user.id) {
+      return;
+    }
+
+    void fetchTeacherMarkScopes(user.id)
+      .then(setMarkScopes)
+      .catch(console.error);
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    setSelectedClass((current) => current && allowedClasses.includes(current) ? current : (allowedClasses[0] || ''));
+  }, [allowedClasses]);
+
+  useEffect(() => {
     if (!selectedClass) {
+      setSubjects([]);
+      setSelectedSubject('');
+      return;
+    }
+
+    if (user?.role === 'Teacher') {
+      const scopedSubjects = markScopes
+        .filter((scope) => scope.className === selectedClass)
+        .map((scope) => scope.subject);
+      const uniqueSubjects = Array.from(new Set(scopedSubjects));
+      setSubjects(uniqueSubjects);
+      setSelectedSubject((current) => current && uniqueSubjects.includes(current) ? current : (uniqueSubjects[0] || ''));
       return;
     }
 
@@ -26,10 +61,11 @@ const MarksEntry = () => {
         setSelectedSubject((current) => current && filtered.includes(current) ? current : (filtered[0] || allowedSubjects[0] || ''));
       })
       .catch(console.error);
-  }, [allowedSubjects, selectedClass]);
+  }, [allowedSubjects, markScopes, selectedClass, user?.role]);
 
   useEffect(() => {
     if (!selectedClass || !selectedSubject) {
+      setRows([]);
       return;
     }
 
@@ -41,6 +77,17 @@ const MarksEntry = () => {
   const handleSaveMarks = async (studentId: string, studentName: string, sectionId: string, value: string) => {
     const markValue = parseInt(value, 10);
     if (isNaN(markValue) || markValue < 0 || markValue > 100 || !selectedSubject) {
+      return;
+    }
+    const canEditSelectedPair = user?.role !== 'Teacher' || markScopes.some((scope) =>
+      scope.className === selectedClass &&
+      scope.sectionId === sectionId &&
+      scope.subject.toLowerCase() === selectedSubject.toLowerCase()
+    );
+
+    if (!canEditSelectedPair) {
+      setNotification('You can enter marks only for the subject you handle in this class.');
+      setTimeout(() => setNotification(null), 2500);
       return;
     }
 
