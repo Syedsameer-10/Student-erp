@@ -87,6 +87,37 @@ const mapSection = (row: SectionRow, classTeacher: string, subjectTeachers: ISec
   roomNumber: row.room_number || undefined,
 });
 
+const addSectionSubjectTeacher = (
+  subjectTeachersBySectionId: Map<string, ISectionTeacher[]>,
+  sectionId: string,
+  teacher: TeacherRow,
+  subject: string | null | undefined
+) => {
+  const normalizedSubject = subject?.trim();
+  if (!normalizedSubject) {
+    return;
+  }
+
+  const current = subjectTeachersBySectionId.get(sectionId) || [];
+  const existingIndex = current.findIndex(
+    (entry) => entry.subject.toLowerCase() === normalizedSubject.toLowerCase()
+  );
+  const nextEntry: ISectionTeacher = {
+    id: teacher.id,
+    name: teacher.name,
+    subject: normalizedSubject,
+  };
+
+  if (existingIndex >= 0) {
+    current[existingIndex] = nextEntry;
+  } else {
+    current.push(nextEntry);
+  }
+
+  current.sort((left, right) => left.subject.localeCompare(right.subject));
+  subjectTeachersBySectionId.set(sectionId, current);
+};
+
 const mapTeacher = (row: TeacherRow, subjectTeacherSections: string[], classTeacherSection: string): ITeacher => ({
   id: row.id,
   profileId: row.profile_id,
@@ -149,6 +180,7 @@ export const fetchSchoolData = async () => {
   teachers.forEach((teacher) => {
     if (teacher.home_section_id) {
       classTeacherBySectionId.set(teacher.home_section_id, teacher.name);
+      addSectionSubjectTeacher(subjectTeachersBySectionId, teacher.home_section_id, teacher, teacher.subject);
     }
   });
 
@@ -165,14 +197,7 @@ export const fetchSchoolData = async () => {
       sectionName,
     ]);
 
-    subjectTeachersBySectionId.set(assignment.section_id, [
-      ...(subjectTeachersBySectionId.get(assignment.section_id) || []),
-      {
-        id: teacher.id,
-        name: teacher.name,
-        subject: assignment.subject,
-      },
-    ]);
+    addSectionSubjectTeacher(subjectTeachersBySectionId, assignment.section_id, teacher, assignment.subject);
   });
 
   return {

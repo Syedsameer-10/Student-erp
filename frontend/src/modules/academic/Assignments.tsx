@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookMarked, Plus, Download, CheckCircle, Clock } from 'lucide-react';
+import { BookMarked, Plus, Download, CheckCircle, Clock, ExternalLink } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Modal from '../../components/common/Modal';
 import { useAuthStore } from '../../store/useAuthStore';
 import { createAssignment, fetchAssignments, submitAssignment, type Assignment } from '../../services/erpContent';
+
+const isGoogleDriveUrl = (value: string) => /^https:\/\/(drive|docs)\.google\.com\//i.test(value.trim());
 
 const Assignments = () => {
   const { user } = useAuthStore();
@@ -14,6 +16,8 @@ const Assignments = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedAsgn, setSelectedAsgn] = useState<Assignment | null>(null);
   const [isSubmissionsOpen, setIsSubmissionsOpen] = useState(false);
+  const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
+  const [submissionTarget, setSubmissionTarget] = useState<Assignment | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
 
   const visibleClasses = useMemo(() => {
@@ -61,6 +65,12 @@ const Assignments = () => {
   const handleAddAssignment = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const driveUrl = (formData.get('drive-url') as string || '').trim();
+
+    if (!isGoogleDriveUrl(driveUrl)) {
+      showToast('Please paste a valid Google Drive or Google Docs link.');
+      return;
+    }
 
     try {
       const created = await createAssignment({
@@ -69,6 +79,7 @@ const Assignments = () => {
         class: formData.get('class') as string,
         deadline: formData.get('deadline') as string,
         description: formData.get('description') as string,
+        driveUrl,
         teacher_id: user?.id,
       });
 
@@ -92,12 +103,12 @@ const Assignments = () => {
       idx + 1,
       submission.student_email,
       submission.submitted_at,
-      submission.file_name,
+      submission.submissionUrl,
       'Accepted',
     ]);
 
     autoTable(doc, {
-      head: [['Sr.', 'Student Email', 'Date Submitted', 'File Name', 'Status']],
+      head: [['Sr.', 'Student Email', 'Date Submitted', 'Drive Link', 'Status']],
       body: tableData.length ? tableData : [['-', 'No submissions yet', '-', '-', '-']],
       startY: 28,
       theme: 'grid',
@@ -107,21 +118,46 @@ const Assignments = () => {
     doc.save(`${asgn.title}_submissions.pdf`);
   };
 
-  const handleSubmitAssignment = async (asgn: Assignment) => {
+  const handleOpenAssignment = (asgn: Assignment) => {
+    if (!asgn.driveUrl) {
+      showToast('No Google Drive link is stored for this assignment yet.');
+      return;
+    }
+
+    window.open(asgn.driveUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleSubmitAssignment = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     if (!user?.email) {
       showToast('Student profile is missing an email address.');
       return;
     }
 
+    if (!submissionTarget) {
+      showToast('No assignment selected for submission.');
+      return;
+    }
+
+    const formData = new FormData(e.currentTarget);
+    const submissionUrl = (formData.get('submission-url') as string || '').trim();
+
+    if (!isGoogleDriveUrl(submissionUrl)) {
+      showToast('Please paste a valid Google Drive or Google Docs link.');
+      return;
+    }
+
     try {
-      const submission = await submitAssignment(asgn.id, user.id, user.email, 'my_submission.pdf');
+      const submission = await submitAssignment(submissionTarget.id, user.id, user.email, submissionUrl);
       setAssignments((current) =>
         current.map((item) =>
-          item.id === asgn.id
+          item.id === submissionTarget.id
             ? { ...item, submissions: [...item.submissions, submission] }
             : item
         )
       );
+      setIsSubmitModalOpen(false);
+      setSubmissionTarget(null);
       showToast('Your assignment has been submitted successfully!');
     } catch (error) {
       console.error('Failed to submit assignment:', error);
@@ -134,7 +170,7 @@ const Assignments = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Academic Assignments</h1>
-          <p className="text-slate-500 mt-1">Track deadlines and manage coursework submissions.</p>
+          <p className="text-slate-500 mt-1">Track deadlines and manage coursework through Google Drive links.</p>
         </div>
         {user?.role === 'Teacher' && (
           <button
@@ -191,6 +227,15 @@ const Assignments = () => {
                   {asgn.description}
                 </p>
 
+                <div className="mb-6">
+                  <button
+                    onClick={() => handleOpenAssignment(asgn)}
+                    className="flex items-center gap-2 text-sm font-semibold text-indigo-600 hover:text-indigo-700"
+                  >
+                    <ExternalLink size={14} /> Open assignment link
+                  </button>
+                </div>
+
                 <div className="pt-5 border-t border-slate-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {user?.role === 'Teacher' ? (
@@ -215,10 +260,13 @@ const Assignments = () => {
                     ) : (
                       <button
                         disabled={hasSubmitted}
-                        onClick={() => void handleSubmitAssignment(asgn)}
+                        onClick={() => {
+                          setSubmissionTarget(asgn);
+                          setIsSubmitModalOpen(true);
+                        }}
                         className={`px-6 py-2 ${hasSubmitted ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20'} rounded-xl font-bold text-xs transition-all active:scale-95`}
                       >
-                        {hasSubmitted ? 'Submission Uploaded' : 'Submit Assignment'}
+                        {hasSubmitted ? 'Submission Linked' : 'Submit Drive Link'}
                       </button>
                     )}
                   </div>
@@ -265,6 +313,17 @@ const Assignments = () => {
             <label className="text-sm font-semibold text-slate-700">Instructions / Guidelines</label>
             <textarea name="description" rows={4} required className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm transition-all resize-none" />
           </div>
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-slate-700">Google Drive Link</label>
+            <input
+              name="drive-url"
+              type="url"
+              required
+              placeholder="https://drive.google.com/..."
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm transition-all"
+            />
+            <p className="text-xs text-slate-400">Paste the shareable assignment brief or worksheet link.</p>
+          </div>
           <div className="pt-4 flex gap-3">
             <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors">Discard</button>
             <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors">Launch Assignment</button>
@@ -284,10 +343,10 @@ const Assignments = () => {
                     <p className="text-[10px] text-slate-500 uppercase tracking-widest">{submission.submitted_at}</p>
                   </div>
                   <button
-                    onClick={() => showToast(`Recorded file: ${submission.file_name}`)}
+                    onClick={() => window.open(submission.submissionUrl, '_blank', 'noopener,noreferrer')}
                     className="p-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200"
                   >
-                    <Download size={14} />
+                    <ExternalLink size={14} />
                   </button>
                 </div>
               )) : (
@@ -304,6 +363,32 @@ const Assignments = () => {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal isOpen={isSubmitModalOpen} onClose={() => { setIsSubmitModalOpen(false); setSubmissionTarget(null); }} title="Submit Assignment Link">
+        <form onSubmit={handleSubmitAssignment} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-slate-700">Assignment</label>
+            <div className="px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-700">
+              {submissionTarget?.title || 'No assignment selected'}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-slate-700">Your Google Drive Link</label>
+            <input
+              name="submission-url"
+              type="url"
+              required
+              placeholder="https://drive.google.com/..."
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm transition-all"
+            />
+            <p className="text-xs text-slate-400">Paste the shareable Google Drive link to your completed work.</p>
+          </div>
+          <div className="pt-4 flex gap-3">
+            <button type="button" onClick={() => { setIsSubmitModalOpen(false); setSubmissionTarget(null); }} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors">Cancel</button>
+            <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors">Submit Link</button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

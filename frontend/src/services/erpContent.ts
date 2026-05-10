@@ -7,6 +7,7 @@ export interface Assignment {
   class: string;
   deadline: string;
   description: string;
+  driveUrl: string | null;
   teacher_id?: string | null;
   submissions: AssignmentSubmission[];
 }
@@ -17,7 +18,7 @@ export interface AssignmentSubmission {
   student_id?: string | null;
   student_email: string;
   submitted_at: string;
-  file_name: string;
+  submissionUrl: string;
 }
 
 export interface StudyMaterial {
@@ -25,8 +26,10 @@ export interface StudyMaterial {
   title: string;
   subject: string;
   class: string;
+  sectionId?: string;
+  teacherProfileId?: string | null;
   uploadDate: string;
-  file: string;
+  driveUrl: string | null;
 }
 
 export interface SchoolEvent {
@@ -79,7 +82,7 @@ export const fetchAssignments = async (classNames?: string[]) => {
   const client = assertSupabase();
   let query = client
     .from('assignments')
-    .select('id, title, subject, class_name, deadline, description, teacher_id, assignment_submissions(id, assignment_id, student_id, student_email, submitted_at, file_name)')
+    .select('id, title, subject, class_name, deadline, description, drive_url, teacher_id, assignment_submissions(id, assignment_id, student_id, student_email, submitted_at, submission_url)')
     .order('deadline', { ascending: true });
 
   if (classNames?.length) {
@@ -96,6 +99,7 @@ export const fetchAssignments = async (classNames?: string[]) => {
     class: row.class_name,
     deadline: row.deadline,
     description: row.description,
+    driveUrl: row.drive_url,
     teacher_id: row.teacher_id,
     submissions: (row.assignment_submissions || []).map((submission: any) => ({
       id: submission.id,
@@ -103,7 +107,7 @@ export const fetchAssignments = async (classNames?: string[]) => {
       student_id: submission.student_id,
       student_email: submission.student_email,
       submitted_at: submission.submitted_at,
-      file_name: submission.file_name,
+      submissionUrl: submission.submission_url,
     })),
   })) as Assignment[];
 };
@@ -118,9 +122,10 @@ export const createAssignment = async (assignment: Omit<Assignment, 'id' | 'subm
       class_name: assignment.class,
       deadline: assignment.deadline,
       description: assignment.description,
+      drive_url: assignment.driveUrl,
       teacher_id: assignment.teacher_id || null,
     })
-    .select('id, title, subject, class_name, deadline, description, teacher_id')
+    .select('id, title, subject, class_name, deadline, description, drive_url, teacher_id')
     .single();
 
   if (error) throw error;
@@ -132,12 +137,13 @@ export const createAssignment = async (assignment: Omit<Assignment, 'id' | 'subm
     class: data.class_name,
     deadline: data.deadline,
     description: data.description,
+    driveUrl: data.drive_url,
     teacher_id: data.teacher_id,
     submissions: [],
   } as Assignment;
 };
 
-export const submitAssignment = async (assignmentId: string, studentId: string, studentEmail: string, fileName: string) => {
+export const submitAssignment = async (assignmentId: string, studentId: string, studentEmail: string, submissionUrl: string) => {
   const client = assertSupabase();
   const { data, error } = await client
     .from('assignment_submissions')
@@ -146,20 +152,27 @@ export const submitAssignment = async (assignmentId: string, studentId: string, 
       student_id: studentId,
       student_email: studentEmail,
       submitted_at: new Date().toISOString().split('T')[0],
-      file_name: fileName,
+      submission_url: submissionUrl,
     })
-    .select('id, assignment_id, student_id, student_email, submitted_at, file_name')
+    .select('id, assignment_id, student_id, student_email, submitted_at, submission_url')
     .single();
 
   if (error) throw error;
-  return data as AssignmentSubmission;
+  return {
+    id: data.id,
+    assignment_id: data.assignment_id,
+    student_id: data.student_id,
+    student_email: data.student_email,
+    submitted_at: data.submitted_at,
+    submissionUrl: data.submission_url,
+  } as AssignmentSubmission;
 };
 
 export const fetchStudyMaterials = async (classNames?: string[]) => {
   const client = assertSupabase();
   let query = client
     .from('study_materials')
-    .select('id, title, subject, class_name, upload_date, file_name')
+    .select('id, title, subject, class_name, section_id, teacher_profile_id, upload_date, drive_url')
     .order('upload_date', { ascending: false });
 
   if (classNames?.length) {
@@ -174,34 +187,57 @@ export const fetchStudyMaterials = async (classNames?: string[]) => {
     title: row.title,
     subject: row.subject,
     class: row.class_name,
+    sectionId: row.section_id,
+    teacherProfileId: row.teacher_profile_id,
     uploadDate: row.upload_date,
-    file: row.file_name,
+    driveUrl: row.drive_url,
   })) as StudyMaterial[];
 };
 
-export const createStudyMaterial = async (material: Omit<StudyMaterial, 'id' | 'uploadDate'>) => {
+export const createStudyMaterial = async (material: Omit<StudyMaterial, 'id' | 'uploadDate' | 'sectionId'>) => {
   const client = assertSupabase();
-  const { data, error } = await client
-    .from('study_materials')
-    .insert({
-      title: material.title,
-      subject: material.subject,
-      class_name: material.class,
-      upload_date: new Date().toISOString().split('T')[0],
-      file_name: material.file,
-    })
-    .select('id, title, subject, class_name, upload_date, file_name')
+  const { data: section, error: sectionError } = await client
+    .from('sections')
+    .select('id')
+    .eq('name', material.class)
     .single();
 
+  if (sectionError) throw sectionError;
+
+  const payload = {
+    title: material.title,
+    subject: material.subject,
+    class_name: material.class,
+    section_id: (section as any).id,
+    teacher_profile_id: material.teacherProfileId || null,
+    upload_date: new Date().toISOString().split('T')[0],
+    drive_url: material.driveUrl,
+  };
+
+  const { error } = await client
+    .from('study_materials')
+    .upsert(payload, { onConflict: 'section_id,subject' });
+
   if (error) throw error;
+
+  const { data, error: fetchError } = await client
+    .from('study_materials')
+    .select('id, title, subject, class_name, section_id, teacher_profile_id, upload_date, drive_url')
+    .eq('section_id', (section as any).id)
+    .eq('subject', material.subject)
+    .single();
+
+  if (fetchError) throw fetchError;
 
   return {
     id: data.id,
     title: data.title,
     subject: data.subject,
     class: data.class_name,
+    sectionId: data.section_id,
+    teacherProfileId: data.teacher_profile_id,
     uploadDate: data.upload_date,
-    file: data.file_name,
+    driveUrl: data.drive_url,
   } as StudyMaterial;
 };
 

@@ -274,6 +274,35 @@ const TeacherClasses = () => {
                 </form>
               )}
 
+              {canEditActiveSection && (
+                <div className="mt-6 rounded-[2rem] border border-emerald-100 bg-emerald-50/70 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[11px] font-black uppercase tracking-[0.25em] text-emerald-600">Owned Class Subject Map</p>
+                      <h3 className="mt-2 text-xl font-black text-slate-900">{activeSection.classTeacher}</h3>
+                      <p className="mt-1 text-sm text-emerald-900">
+                        This staffing view is shown only for the class where you are the class teacher.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {(activeSection.subjectTeachers || []).length ? activeSection.subjectTeachers?.map((teacher) => (
+                      <div key={`${teacher.subject}:${teacher.id}`} className="rounded-2xl border border-white/70 bg-white px-4 py-3 shadow-sm">
+                        <p className="text-sm font-black text-slate-900">{teacher.subject}</p>
+                        <p className="mt-1 text-sm text-slate-600">{teacher.name}</p>
+                        <p className={`mt-2 text-[10px] font-black uppercase tracking-[0.2em] ${teacher.name === activeSection.classTeacher ? 'text-emerald-600' : 'text-slate-400'}`}>
+                          {teacher.name === activeSection.classTeacher ? 'Class Teacher Subject' : 'Subject Teacher'}
+                        </p>
+                      </div>
+                    )) : (
+                      <div className="rounded-2xl border border-white/70 bg-white px-4 py-5 text-sm text-slate-500 shadow-sm md:col-span-2">
+                        No subject staffing is available for this class yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="mt-6 overflow-hidden rounded-[2rem] border border-slate-100">
                 {visibleStudents.length ? (
                   <div className="overflow-x-auto">

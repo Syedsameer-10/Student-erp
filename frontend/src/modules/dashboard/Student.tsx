@@ -6,6 +6,7 @@ import { formatCurrency } from '../../utils/formatCurrency';
 import { useEffect, useState } from 'react';
 import { fetchStudentAttendanceSummary } from '../../services/attendance';
 import { fetchStudentByProfile } from '../../services/schoolData';
+import { useClassStore } from '../../store/useClassStore';
 
 const performanceData = [
   { name: 'Unit 1', score: 75 },
@@ -19,6 +20,12 @@ const StudentDashboard = () => {
   const navigate = useNavigate();
   const [studentData, setStudentData] = useState<any>(null);
   const [attendance, setAttendance] = useState(0);
+  const initialize = useClassStore((state) => state.initialize);
+  const sections = useClassStore((state) => state.sections);
+
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -34,6 +41,9 @@ const StudentDashboard = () => {
       }
     })();
   }, [user?.id]);
+
+  const activeSection = sections.find((section) => section.id === studentData?.sectionId || section.name === user?.class);
+  const activeSubjects = activeSection?.subjectTeachers || [];
 
   return (
     <div className="space-y-6">
@@ -81,6 +91,46 @@ const StudentDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">My Class Teachers</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                See which subject is handled by which teacher in your class.
+              </p>
+            </div>
+          </div>
+          {activeSection ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">Class Teacher</p>
+                <p className="mt-1 text-base font-bold text-slate-900">{activeSection.classTeacher}</p>
+              </div>
+              <div className="space-y-3">
+                {activeSubjects.length ? activeSubjects.map((teacher) => (
+                  <div key={`${teacher.subject}:${teacher.id}`} className="flex items-center justify-between rounded-xl border border-slate-100 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{teacher.subject}</p>
+                      <p className="text-xs text-slate-500">Handled by {teacher.name}</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      {teacher.name === activeSection.classTeacher ? 'Class Teacher' : 'Subject Teacher'}
+                    </span>
+                  </div>
+                )) : (
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                    Subject staffing has not been filled in for this class yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+              We could not find the class staffing map for this student yet.
+            </div>
+          )}
+        </div>
+
         {/* Performance Chart */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h2 className="text-lg font-semibold text-slate-900 mb-6">My Performance Over Time</h2>

@@ -1,25 +1,81 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Download, FileText, CheckCircle } from 'lucide-react';
-import jsPDF from 'jspdf';
+import { Plus, ExternalLink, FileText, CheckCircle } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 import { useAuthStore } from '../../store/useAuthStore';
 import { createStudyMaterial, fetchStudyMaterials, type StudyMaterial } from '../../services/erpContent';
+import { fetchTeacherMarkScopes, type TeacherMarkScope } from '../../services/marks';
+
+const isGoogleDriveUrl = (value: string) => /^https:\/\/(drive|docs)\.google\.com\//i.test(value.trim());
 
 const StudyMaterials = () => {
   const { user } = useAuthStore();
-  const teacherSubjects = user?.subjects?.length ? user.subjects : (user?.subject ? [user.subject] : []);
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
+  const [teacherScopes, setTeacherScopes] = useState<TeacherMarkScope[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+  const [selectedClass, setSelectedClass] = useState('');
 
   const visibleClasses = useMemo(() => {
     if (user?.role === 'Teacher') {
-      return user.classes || [];
+      return Array.from(new Set(teacherScopes.map((scope) => scope.className)));
     }
 
     return user?.class ? [user.class] : [];
-  }, [user]);
+  }, [teacherScopes, user]);
+
+  const subjectOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          teacherScopes
+            .filter((scope) => scope.className === selectedClass)
+            .map((scope) => scope.subject)
+        )
+      ),
+    [selectedClass, teacherScopes]
+  );
+
+  const filteredMaterials = useMemo(() => {
+    if (user?.role !== 'Teacher') {
+      return materials;
+    }
+
+    const allowed = new Set(teacherScopes.map((scope) => `${scope.sectionId}:${scope.subject.toLowerCase()}`));
+    return materials.filter((item) => {
+      if (!item.sectionId) {
+        return false;
+      }
+
+      return allowed.has(`${item.sectionId}:${item.subject.toLowerCase()}`);
+    });
+  }, [materials, teacherScopes, user?.role]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadScopes = async () => {
+      if (user?.role !== 'Teacher' || !user.id) {
+        return;
+      }
+
+      try {
+        const scopes = await fetchTeacherMarkScopes(user.id);
+        if (isMounted) {
+          setTeacherScopes(scopes);
+          setSelectedClass((current) => current || scopes[0]?.className || '');
+        }
+      } catch (error) {
+        console.error('Failed to load teacher study material scopes:', error);
+      }
+    };
+
+    void loadScopes();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id, user?.role]);
 
   useEffect(() => {
     let isMounted = true;
@@ -58,41 +114,48 @@ const StudyMaterials = () => {
   const handleAddMaterial = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const file = formData.get('material-file') as File;
+    const driveUrl = (formData.get('drive-url') as string || '').trim();
+    const targetClass = (formData.get('class') as string) || selectedClass;
+    const subject = (formData.get('subject') as string || '').trim();
+
+    if (!isGoogleDriveUrl(driveUrl)) {
+      showToast('Please paste a valid Google Drive or Google Docs link.');
+      return;
+    }
+
+    if (!targetClass || !subject) {
+      showToast('Please choose a valid class and subject.');
+      return;
+    }
 
     try {
       const created = await createStudyMaterial({
-        title: formData.get('title') as string,
-        subject: (formData.get('subject') as string) || teacherSubjects[0] || 'General',
-        class: formData.get('class') as string,
-        file: file?.name || 'study_material.pdf',
+        title: `${targetClass} ${subject} Study Folder`,
+        subject,
+        class: targetClass,
+        teacherProfileId: user?.id,
+        driveUrl,
       });
-      setMaterials((current) => [created, ...current]);
+      setMaterials((current) => {
+        const next = current.filter((item) => !(item.sectionId === created.sectionId && item.subject === created.subject));
+        return [created, ...next];
+      });
       setIsModalOpen(false);
-      showToast(`"${created.title}" published with attachment!`);
+      showToast(`Updated ${created.class} ${created.subject} study folder.`);
     } catch (error) {
       console.error('Failed to create study material:', error);
       showToast('Could not publish the study material.');
     }
   };
 
-  const handleDownload = (item: StudyMaterial) => {
-    const doc = new jsPDF();
-    doc.setFontSize(22);
-    doc.text(item.title, 20, 30);
-    doc.setFontSize(14);
-    doc.text(`Subject: ${item.subject}`, 20, 45);
-    doc.text(`Class: ${item.class}`, 20, 55);
-    doc.text(`Upload Date: ${item.uploadDate}`, 20, 65);
+  const handleOpenMaterial = (item: StudyMaterial) => {
+    if (!item.driveUrl) {
+      showToast('No Google Drive link is stored for this material yet.');
+      return;
+    }
 
-    doc.setFontSize(12);
-    doc.text('Summary of Learning Objectives:', 20, 85);
-    doc.text('1. Understand the concepts shared by the teacher.', 25, 95);
-    doc.text('2. Review classroom examples and revision pointers.', 25, 105);
-    doc.text('3. Follow up with assignments connected to this topic.', 25, 115);
-
-    doc.save(item.file);
-    showToast('Downloading study material...');
+    window.open(item.driveUrl, '_blank', 'noopener,noreferrer');
+    showToast('Opening study material...');
   };
 
   return (
@@ -100,14 +163,14 @@ const StudyMaterials = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Study Materials</h1>
-          <p className="text-slate-500 mt-1">Access and manage digital learning resources.</p>
+          <p className="text-slate-500 mt-1">One Google Drive folder per class subject, visible only to the right class.</p>
         </div>
         {user?.role === 'Teacher' && (
           <button
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors shadow-sm text-sm"
           >
-            <Plus size={16} /> Upload Material
+            <Plus size={16} /> Link Subject Folder
           </button>
         )}
       </div>
@@ -127,7 +190,7 @@ const StudyMaterials = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {materials.map((item) => (
+          {filteredMaterials.map((item) => (
             <div key={item.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow group">
               <div className="flex items-start justify-between mb-4">
                 <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-all">
@@ -135,17 +198,17 @@ const StudyMaterials = () => {
                 </div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.uploadDate}</span>
               </div>
-              <h3 className="text-lg font-bold text-slate-900 leading-tight group-hover:text-indigo-600 transition-colors">{item.title}</h3>
+              <h3 className="text-lg font-bold text-slate-900 leading-tight group-hover:text-indigo-600 transition-colors">{item.subject} Folder</h3>
               <div className="flex items-center gap-2 mt-2">
                 <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold uppercase">{item.subject}</span>
                 <span className="text-xs text-slate-500 font-medium">Class {item.class}</span>
               </div>
               <div className="mt-6 pt-4 border-t border-slate-100">
                 <button
-                  onClick={() => handleDownload(item)}
+                  onClick={() => handleOpenMaterial(item)}
                   className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-slate-50 hover:bg-indigo-600 text-slate-600 hover:text-white rounded-xl text-xs font-bold transition-all active:scale-95 border border-slate-100"
                 >
-                  <Download size={14} /> Download PDF Material
+                  <ExternalLink size={14} /> Open Drive Material
                 </button>
               </div>
             </div>
@@ -153,40 +216,43 @@ const StudyMaterials = () => {
         </div>
       )}
 
-      {!isLoading && materials.length === 0 && (
+      {!isLoading && filteredMaterials.length === 0 && (
         <div className="bg-white rounded-2xl border border-slate-100 p-8 text-sm text-slate-500 shadow-sm">
           No study materials are available for this profile yet.
         </div>
       )}
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Upload Learning Material">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Link Subject Folder">
         <form onSubmit={handleAddMaterial} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-semibold text-slate-700">Material Title</label>
-            <input name="title" required className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all text-sm" placeholder="e.g. Chapter 4: Thermodynamics" />
-          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">Target Class</label>
-              <select name="class" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all text-sm">
+              <select
+                name="class"
+                value={selectedClass}
+                onChange={(event) => setSelectedClass(event.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all text-sm"
+              >
                 {visibleClasses.map((className) => <option key={className} value={className}>Class {className}</option>)}
               </select>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">Subject</label>
               <select name="subject" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all text-sm">
-                {teacherSubjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+                {subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
               </select>
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-slate-700">Attachment (PDF)</label>
-            <label className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:border-indigo-400 transition-colors cursor-pointer block relative">
-              <input type="file" name="material-file" accept=".pdf" className="absolute inset-0 opacity-0 cursor-pointer" />
-              <Plus size={32} className="mx-auto text-slate-300 mb-2" />
-              <p className="text-sm text-slate-400 font-medium">Click to select PDF from device</p>
-              <p className="text-[10px] text-slate-300 font-bold uppercase mt-1">Maximum 10MB</p>
-            </label>
+            <label className="text-sm font-semibold text-slate-700">Google Drive Folder Link</label>
+            <input
+              name="drive-url"
+              type="url"
+              required
+              placeholder="https://drive.google.com/..."
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all text-sm"
+            />
+            <p className="text-xs text-slate-400">Paste the shareable folder link. Put as many files as you want inside that folder.</p>
           </div>
           <div className="pt-4 flex gap-3">
             <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors">Cancel</button>

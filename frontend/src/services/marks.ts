@@ -47,7 +47,7 @@ export const fetchSubjectsForClass = async (className: string) => {
   const client = assertSupabase();
   const { data: section, error: sectionError } = await client
     .from('sections')
-    .select('category_id')
+    .select('id')
     .eq('name', className)
     .single();
 
@@ -56,16 +56,16 @@ export const fetchSubjectsForClass = async (className: string) => {
   }
 
   const { data, error } = await client
-    .from('subjects')
-    .select('name')
-    .eq('category_id', (section as any).category_id)
+    .from('section_subjects')
+    .select('subject_name')
+    .eq('section_id', (section as any).id)
     .order('sort_order', { ascending: true });
 
   if (error) {
     throw error;
   }
 
-  return (data || []).map((row: any) => row.name as string);
+  return (data || []).map((row: any) => row.subject_name as string);
 };
 
 export const fetchTeacherMarkScopes = async (teacherProfileId: string): Promise<TeacherMarkScope[]> => {
@@ -197,22 +197,38 @@ export const fetchStudentMarksByProfile = async (profileId: string, examType?: E
   }
 
   const client = assertSupabase();
-  let query = client
-    .from('student_marks')
-    .select('id, student_id, student_name, class_name, section_id, subject_name, marks, max_marks, exam_type, teacher_profile_id')
-    .eq('student_id', student.id)
-    .order('subject_name', { ascending: true });
+  const [{ data: sectionSubjects, error: sectionSubjectsError }, marksRes] = await Promise.all([
+    client
+      .from('section_subjects')
+      .select('subject_name')
+      .eq('section_id', student.sectionId),
+    (() => {
+      let query = client
+        .from('student_marks')
+        .select('id, student_id, student_name, class_name, section_id, subject_name, marks, max_marks, exam_type, teacher_profile_id')
+        .eq('student_id', student.id)
+        .order('subject_name', { ascending: true });
 
-  if (examType) {
-    query = query.eq('exam_type', examType);
+      if (examType) {
+        query = query.eq('exam_type', examType);
+      }
+
+      return query;
+    })(),
+  ]);
+
+  if (sectionSubjectsError) {
+    throw sectionSubjectsError;
   }
 
-  const { data, error } = await query;
+  const { data, error } = marksRes;
   if (error) {
     throw error;
   }
 
-  return (data || []).map((row: any) => ({
+  const allowedSubjects = new Set((sectionSubjects || []).map((row: any) => String(row.subject_name).toLowerCase()));
+
+  return (data || []).filter((row: any) => allowedSubjects.has(String(row.subject_name).toLowerCase())).map((row: any) => ({
     id: row.id,
     studentId: row.student_id,
     studentName: row.student_name,
