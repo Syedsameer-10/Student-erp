@@ -1,26 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, CheckCircle, AlertCircle, Users, BookOpen, GraduationCap } from 'lucide-react';
+import { AlertCircle, Award, BookOpen, CheckCircle, Filter, Search, Users } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
-import { fetchSubjectsForClass, fetchTeacherMarkScopes, fetchTeacherMarkSheet, MARK_EXAMS, upsertStudentMark, type ExamType, type TeacherMarkScope, type TeacherMarkSheetRow } from '../../services/marks';
+import {
+  fetchTeacherStudentPerformance,
+  MARK_EXAMS,
+  upsertStudentMark,
+  type ExamType,
+  type TeacherStudentPerformanceRow,
+  type TeacherStudentSubjectPerformance,
+} from '../../services/marks';
+
+const scoreColor = (marks?: number | null) => {
+  if (typeof marks !== 'number') return 'text-slate-400';
+  if (marks >= 75) return 'text-emerald-600';
+  if (marks >= 40) return 'text-indigo-600';
+  return 'text-rose-600';
+};
 
 const MarksEntry = () => {
   const { user } = useAuthStore();
-  const [markScopes, setMarkScopes] = useState<TeacherMarkScope[]>([]);
-  const allowedClasses = useMemo(
-    () => user?.role === 'Teacher'
-      ? Array.from(new Set(markScopes.map((scope) => scope.className)))
-      : (user?.classes || []),
-    [markScopes, user?.classes, user?.role]
-  );
-  const allowedSubjects = useMemo(
-    () => user?.subjects?.length ? user.subjects : (user?.subject ? [user.subject] : []),
-    [user?.subject, user?.subjects]
-  );
-  const [selectedClass, setSelectedClass] = useState(allowedClasses[0] || '');
-  const [subjects, setSubjects] = useState<string[]>([]);
-  const [selectedSubject, setSelectedSubject] = useState(allowedSubjects[0] || '');
   const [examType, setExamType] = useState<ExamType>('Quarterly');
-  const [rows, setRows] = useState<TeacherMarkSheetRow[]>([]);
+  const [rows, setRows] = useState<TeacherStudentPerformanceRow[]>([]);
+  const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [classFilter, setClassFilter] = useState('All');
+  const [subjectFilter, setSubjectFilter] = useState('All');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,212 +33,378 @@ const MarksEntry = () => {
       return;
     }
 
-    void fetchTeacherMarkScopes(user.id)
-      .then(setMarkScopes)
-      .catch(console.error);
-  }, [user?.id, user?.role]);
-
-  useEffect(() => {
-    setSelectedClass((current) => current && allowedClasses.includes(current) ? current : (allowedClasses[0] || ''));
-  }, [allowedClasses]);
-
-  useEffect(() => {
-    if (!selectedClass) {
-      setSubjects([]);
-      setSelectedSubject('');
-      return;
-    }
-
-    if (user?.role === 'Teacher') {
-      const scopedSubjects = markScopes
-        .filter((scope) => scope.className === selectedClass)
-        .map((scope) => scope.subject);
-      const uniqueSubjects = Array.from(new Set(scopedSubjects));
-      setSubjects(uniqueSubjects);
-      setSelectedSubject((current) => current && uniqueSubjects.includes(current) ? current : (uniqueSubjects[0] || ''));
-      return;
-    }
-
-    void fetchSubjectsForClass(selectedClass)
+    setLoading(true);
+    void fetchTeacherStudentPerformance(user.id, examType)
       .then((items) => {
-        const filtered = allowedSubjects.length ? items.filter((item) => allowedSubjects.includes(item)) : items;
-        setSubjects(filtered);
-        setSelectedSubject((current) => current && filtered.includes(current) ? current : (filtered[0] || allowedSubjects[0] || ''));
+        setRows(items);
+        setSelectedStudentId((current) => current || items[0]?.studentId || '');
       })
-      .catch(console.error);
-  }, [allowedSubjects, markScopes, selectedClass, user?.role]);
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [examType, user?.id, user?.role]);
+
+  const classOptions = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.className))).sort(),
+    [rows]
+  );
+
+  const subjectOptions = useMemo(
+    () => Array.from(new Set(rows.flatMap((row) => row.subjects.map((subject) => subject.subject)))).sort(),
+    [rows]
+  );
+
+  const filteredRows = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    return rows.filter((row) => {
+      const matchesClass = classFilter === 'All' || row.className === classFilter;
+      const matchesSubject = subjectFilter === 'All' || row.subjects.some((subject) => subject.subject === subjectFilter);
+      const matchesSearch = !normalizedSearch ||
+        row.studentName.toLowerCase().includes(normalizedSearch) ||
+        String(row.rollNo || '').toLowerCase().includes(normalizedSearch);
+
+      return matchesClass && matchesSubject && matchesSearch;
+    });
+  }, [classFilter, rows, search, subjectFilter]);
 
   useEffect(() => {
-    if (!selectedClass || !selectedSubject) {
-      setRows([]);
+    if (!filteredRows.length) {
+      setSelectedStudentId('');
       return;
     }
 
-    void fetchTeacherMarkSheet(selectedClass, selectedSubject, examType)
-      .then(setRows)
-      .catch(console.error);
-  }, [examType, selectedClass, selectedSubject]);
+    setSelectedStudentId((current) => filteredRows.some((row) => row.studentId === current)
+      ? current
+      : filteredRows[0].studentId);
+  }, [filteredRows]);
 
-  const handleSaveMarks = async (studentId: string, studentName: string, sectionId: string, value: string) => {
+  const selectedStudent = useMemo(
+    () => rows.find((row) => row.studentId === selectedStudentId) || filteredRows[0],
+    [filteredRows, rows, selectedStudentId]
+  );
+
+  const visibleSubjectMarks = useMemo(
+    () => filteredRows.flatMap((row) => row.subjects),
+    [filteredRows]
+  );
+
+  const completedMarks = visibleSubjectMarks.filter((subject) => typeof subject.marks === 'number');
+  const editableSubjects = visibleSubjectMarks.filter((subject) => subject.canEdit).length;
+  const subjectHighestCards = useMemo(() => {
+    const cards = new Map<string, { subject: string; highestMarks: number | null; savedMarks: number; totalMarks: number }>();
+
+    filteredRows.forEach((row) => {
+      row.subjects.forEach((subject) => {
+        if (subjectFilter !== 'All' && subject.subject !== subjectFilter) {
+          return;
+        }
+
+        const current = cards.get(subject.subject) || {
+          subject: subject.subject,
+          highestMarks: null,
+          savedMarks: 0,
+          totalMarks: 0,
+        };
+
+        current.totalMarks += 1;
+        if (typeof subject.marks === 'number') {
+          current.savedMarks += 1;
+        }
+        if (typeof subject.highestMarks === 'number') {
+          current.highestMarks = typeof current.highestMarks === 'number'
+            ? Math.max(current.highestMarks, subject.highestMarks)
+            : subject.highestMarks;
+        }
+        cards.set(subject.subject, current);
+      });
+    });
+
+    return Array.from(cards.values()).sort((left, right) => left.subject.localeCompare(right.subject));
+  }, [filteredRows, subjectFilter]);
+
+  const showNotification = (message: string) => {
+    setNotification(message);
+    setTimeout(() => setNotification(null), 2500);
+  };
+
+  const handleSaveMarks = async (
+    student: TeacherStudentPerformanceRow,
+    subject: TeacherStudentSubjectPerformance,
+    value: string
+  ) => {
     const markValue = parseInt(value, 10);
-    if (isNaN(markValue) || markValue < 0 || markValue > 100 || !selectedSubject) {
+    if (isNaN(markValue) || markValue < 0 || markValue > 100) {
       return;
     }
-    const canEditSelectedPair = user?.role !== 'Teacher' || markScopes.some((scope) =>
-      scope.className === selectedClass &&
-      scope.sectionId === sectionId &&
-      scope.subject.toLowerCase() === selectedSubject.toLowerCase()
-    );
 
-    if (!canEditSelectedPair) {
-      setNotification('You can enter marks only for the subject you handle in this class.');
-      setTimeout(() => setNotification(null), 2500);
+    if (!subject.canEdit) {
+      showNotification('You can edit only the subjects you handle for this class.');
       return;
     }
 
     await upsertStudentMark({
-      studentId,
-      studentName,
-      sectionId,
-      className: selectedClass,
-      subject: selectedSubject,
+      studentId: student.studentId,
+      studentName: student.studentName,
+      sectionId: student.sectionId,
+      className: student.className,
+      subject: subject.subject,
       examType,
       marks: markValue,
-      maxMarks: 100,
+      maxMarks: subject.maxMarks || 100,
       teacherProfileId: user?.id,
     });
 
-    setRows((current) => current.map((row) => row.studentId === studentId ? { ...row, marks: markValue } : row));
-    setNotification(`Marks updated for ${studentName}`);
-    setTimeout(() => setNotification(null), 2000);
-  };
+    setRows((current) => current.map((row) => {
+      if (row.studentId !== student.studentId) {
+        return row;
+      }
 
-  const visibleRows = useMemo(() => rows, [rows]);
+      const subjects = row.subjects.map((item) =>
+        item.subject === subject.subject
+          ? {
+              ...item,
+              marks: markValue,
+              maxMarks: subject.maxMarks || 100,
+              highestMarks: typeof item.highestMarks === 'number' ? Math.max(item.highestMarks, markValue) : markValue,
+            }
+          : item
+      );
+      const savedSubjects = subjects.filter((item) => typeof item.marks === 'number');
+
+      return {
+        ...row,
+        subjects,
+        completedSubjects: savedSubjects.length,
+      };
+    }));
+    showNotification(`Marks updated for ${student.studentName}`);
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Marks Entry</h2>
-          <p className="text-slate-500 text-sm">Update and manage student grades only for your assigned classes and subject.</p>
+          <h2 className="text-2xl font-bold text-slate-900">Marks Hub</h2>
+          <p className="text-sm text-slate-500">Review your students across every subject. Only your assigned subject cells are editable.</p>
         </div>
 
         {notification && (
-          <div className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl border border-emerald-100 flex items-center gap-2 animate-in fade-in slide-in-from-right-4">
+          <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700">
             <CheckCircle size={16} />
-            <span className="text-sm font-bold">{notification}</span>
+            {notification}
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {[
+          { label: 'Students', value: filteredRows.length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'Marks Saved', value: `${completedMarks.length}/${visibleSubjectMarks.length || 0}`, icon: CheckCircle, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+          { label: 'Editable Cells', value: editableSubjects, icon: BookOpen, color: 'text-amber-600', bg: 'bg-amber-50' },
+        ].map((stat) => (
+          <div key={stat.label} className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+            <div className={`rounded-xl p-3 ${stat.bg} ${stat.color}`}>
+              <stat.icon size={22} />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{stat.label}</p>
+              <p className="text-2xl font-black text-slate-900">{stat.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm lg:grid-cols-4">
         <div className="space-y-2">
-          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-            <Users size={14} /> Select Class
+          <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+            <Award size={14} /> Exam
           </label>
           <select
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 outline-none transition-all bg-slate-50/50"
+            value={examType}
+            onChange={(event) => setExamType(event.target.value as ExamType)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-100"
           >
-            {allowedClasses.map((className) => (
+            {MARK_EXAMS.map((exam) => (
+              <option key={exam} value={exam}>{exam}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+            <Users size={14} /> Class
+          </label>
+          <select
+            value={classFilter}
+            onChange={(event) => setClassFilter(event.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-100"
+          >
+            <option value="All">All Classes</option>
+            {classOptions.map((className) => (
               <option key={className} value={className}>Class {className}</option>
             ))}
           </select>
         </div>
         <div className="space-y-2">
-          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-            <BookOpen size={14} /> Subject
+          <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+            <Filter size={14} /> Subject
           </label>
           <select
-            value={selectedSubject}
-            onChange={(e) => setSelectedSubject(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 outline-none transition-all bg-slate-50/50"
+            value={subjectFilter}
+            onChange={(event) => setSubjectFilter(event.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-100"
           >
-            {subjects.map((subject) => (
+            <option value="All">All Subjects</option>
+            {subjectOptions.map((subject) => (
               <option key={subject} value={subject}>{subject}</option>
             ))}
           </select>
         </div>
         <div className="space-y-2">
-          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-            <GraduationCap size={14} /> Exam Type
+          <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+            <Search size={14} /> Search
           </label>
-          <select
-            value={examType}
-            onChange={(e) => setExamType(e.target.value as ExamType)}
-            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 outline-none transition-all bg-slate-50/50"
-          >
-            {MARK_EXAMS.map((type) => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-end">
-          <button className="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2">
-            <Search size={18} /> Load Students
-          </button>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Student or roll no"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-100"
+          />
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider">
-            <tr>
-              <th className="px-8 py-4">Student Name</th>
-              <th className="px-8 py-4">Roll No</th>
-              <th className="px-8 py-4">Marks Obtained (Max 100)</th>
-              <th className="px-8 py-4 text-center">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {visibleRows.map((student) => (
-              <tr key={student.studentId} className="hover:bg-slate-50/50 transition-colors">
-                <td className="px-8 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs uppercase">
-                      {student.studentName.charAt(0)}
-                    </div>
-                    <span className="font-bold text-slate-900">{student.studentName}</span>
-                  </div>
-                </td>
-                <td className="px-8 py-4 text-slate-500 font-medium">#{student.rollNo}</td>
-                <td className="px-8 py-4">
-                  <div className="relative max-w-[120px]">
-                    <input
-                      type="number"
-                      defaultValue={student.marks ?? ''}
-                      onBlur={(e) => void handleSaveMarks(student.studentId, student.studentName, student.sectionId, e.target.value)}
-                      className="w-full pl-4 pr-10 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-100 outline-none font-bold text-slate-900"
-                      placeholder="00"
-                      min="0"
-                      max="100"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">/ 100</span>
-                  </div>
-                </td>
-                <td className="px-8 py-4 text-center">
-                  {typeof student.marks === 'number' ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider">
-                      <CheckCircle size={10} /> Saved
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider">
-                      <AlertCircle size={10} /> Pending
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {visibleRows.length === 0 && (
+      <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Highest Marks</p>
+            <h3 className="text-lg font-black text-slate-900">{classFilter === 'All' ? 'Visible Classes' : `Class ${classFilter}`}</h3>
+          </div>
+          <Award className="text-emerald-600" size={22} />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {subjectHighestCards.map((card) => (
+            <div key={card.subject} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+              <p className="text-sm font-black text-slate-900">{card.subject}</p>
+              <p className={`mt-2 text-2xl font-black ${scoreColor(card.highestMarks)}`}>
+                {typeof card.highestMarks === 'number' ? `${card.highestMarks}%` : 'Pending'}
+              </p>
+              <p className="mt-1 text-xs font-bold text-slate-400">{card.savedMarks}/{card.totalMarks} marks entered</p>
+            </div>
+          ))}
+          {subjectHighestCards.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm font-semibold text-slate-400">
+              Select a class to view subject highest marks.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
+        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500">
               <tr>
-                <td colSpan={4} className="px-8 py-12 text-center text-slate-500 font-medium">
-                  No students or marks found for your assigned class/subject selection.
-                </td>
+                <th className="px-6 py-4">Student</th>
+                <th className="px-6 py-4">Class</th>
+                <th className="px-6 py-4">Marks</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {filteredRows.map((student) => (
+                <tr
+                  key={student.studentId}
+                  onClick={() => setSelectedStudentId(student.studentId)}
+                  className={`cursor-pointer transition-colors hover:bg-slate-50 ${selectedStudent?.studentId === student.studentId ? 'bg-indigo-50/60' : ''}`}
+                >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-xs font-black uppercase text-white">
+                        {student.studentName.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900">{student.studentName}</p>
+                        <p className="text-xs font-semibold text-slate-400">Roll {student.rollNo || '-'}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm font-bold text-slate-600">Class {student.className}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-2">
+                      {student.subjects.map((subject) => (
+                        <span
+                          key={subject.subject}
+                          className={`rounded-lg px-2.5 py-1 text-[11px] font-bold ${subject.canEdit ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}
+                        >
+                          {subject.subject}: {typeof subject.marks === 'number' ? subject.marks : '-'}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!loading && filteredRows.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-6 py-12 text-center text-sm font-semibold text-slate-400">
+                    No students found for the selected filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+          {selectedStudent ? (
+            <div className="space-y-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Selected Student</p>
+                <h3 className="mt-1 text-xl font-black text-slate-900">{selectedStudent.studentName}</h3>
+                <p className="text-sm font-semibold text-slate-500">Class {selectedStudent.className} | Roll {selectedStudent.rollNo || '-'}</p>
+              </div>
+
+              <div className="space-y-3">
+                {selectedStudent.subjects.map((subject) => (
+                  <div key={subject.subject} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-slate-900">{subject.subject}</p>
+                        <p className={`text-xs font-bold ${subject.canEdit ? 'text-indigo-600' : 'text-slate-400'}`}>
+                          {subject.canEdit ? 'Editable for you' : 'Read only'}
+                        </p>
+                      </div>
+                      {typeof subject.marks === 'number' ? (
+                        <span className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700">Saved</span>
+                      ) : (
+                        <span className="rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-amber-700">Pending</span>
+                      )}
+                    </div>
+                    <div className="relative max-w-[150px]">
+                      <input
+                        key={`${selectedStudent.studentId}-${subject.subject}-${examType}-${subject.marks ?? 'blank'}`}
+                        type="number"
+                        defaultValue={subject.marks ?? ''}
+                        disabled={!subject.canEdit}
+                        min="0"
+                        max="100"
+                        onBlur={(event) => void handleSaveMarks(selectedStudent, subject, event.target.value)}
+                        className={`w-full rounded-xl border px-4 py-2 pr-12 text-lg font-black outline-none focus:ring-2 ${
+                          subject.canEdit
+                            ? 'border-slate-200 bg-white text-slate-900 focus:ring-indigo-100'
+                            : 'border-slate-100 bg-slate-100 text-slate-400'
+                        }`}
+                        placeholder="00"
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">/100</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-h-[320px] flex-col items-center justify-center text-center text-slate-400">
+              <AlertCircle size={28} />
+              <p className="mt-3 text-sm font-semibold">Select a student to view marks.</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

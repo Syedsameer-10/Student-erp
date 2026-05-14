@@ -61,7 +61,7 @@ const AdminDashboard = () => {
 
   const quickActions = [
     { name: 'Manage Classes', icon: Building2, path: '/admin/classes' },
-    { name: 'Sections Hub', icon: Users, path: '/admin/classes' },
+    { name: 'Faculty Hub', icon: Shield, path: '/admin/teachers' },
     { name: 'Fees & Finance', icon: IndianRupee, path: '/admin/fees' },
     { name: 'Generate Report', icon: FileText, path: '/admin/reports' },
   ];

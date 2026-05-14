@@ -37,6 +37,7 @@ interface StudentProfileRow {
 interface TeacherProfileRow {
   subject: string | null;
   subjects: string[] | null;
+  home_section_subject: string | null;
   home_section:
     | {
         name: string | null;
@@ -128,7 +129,7 @@ const fetchTeacherProfile = async (profileId: string): Promise<UserRoleContext> 
   const [teacherRes, assignmentsRes] = await Promise.all([
     client
       .from('teachers')
-      .select('subject, subjects, home_section:sections!teachers_home_section_id_fkey(name)')
+      .select('subject, subjects, home_section_subject, home_section:sections!teachers_home_section_id_fkey(name)')
       .eq('profile_id', profileId)
       .maybeSingle<TeacherProfileRow>(),
     client
@@ -154,13 +155,13 @@ const fetchTeacherProfile = async (profileId: string): Promise<UserRoleContext> 
   const assignedSubjects = assignmentRows
     .filter((row) => row.role === 'Subject Teacher')
     .map((row) => row.subject);
-  const subjects = compactUnique([teacher?.subject, ...(teacher?.subjects || []), ...assignedSubjects]);
+  const subjects = compactUnique([teacher?.home_section_subject, teacher?.subject, ...(teacher?.subjects || []), ...assignedSubjects]);
 
   return {
     className: primaryClass || undefined,
     classes: classes.length ? classes : undefined,
     standards: classes.length ? classes : undefined,
-    subject: teacher?.subject || subjects[0],
+    subject: teacher?.home_section_subject || teacher?.subject || subjects[0],
     subjects: subjects.length ? subjects : undefined,
     ...splitClassName(primaryClass || undefined),
   };

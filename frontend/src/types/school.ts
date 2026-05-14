@@ -5,6 +5,7 @@ export interface ITeacher {
   category: string;
   subject: string;
   subjects?: string[];
+  homeSectionSubject?: string;
   qualification: string;
   experience: string;
   contact: string;
@@ -52,4 +53,19 @@ export interface IClassCategory {
   name: string;
   description: string;
   icon: string;
+}
+
+export interface IClassSubjectDefinition {
+  name: string;
+  code: string;
+  sortOrder: number;
+}
+
+export interface IClassSubjectGroup {
+  id: string;
+  name: string;
+  categoryId: string;
+  description: string;
+  sectionNames: string[];
+  subjects: IClassSubjectDefinition[];
 }

@@ -23,6 +23,7 @@ const getNavItems = (role: string) => {
   if (role === 'Admin') {
     items.push(
       { name: 'Classes Mgmt', icon: Building2, path: '/admin/classes' },
+      { name: 'Faculty', icon: Shield, path: '/admin/teachers' },
       { name: 'Marks Hub', icon: Award, path: '/admin/marks' },
       { name: 'Library', icon: Library, path: '/admin/library' },
       { name: 'Fees & Finance', icon: IndianRupee, path: '/admin/fees' },
@@ -37,7 +38,7 @@ const getNavItems = (role: string) => {
       { name: 'My Classes', icon: Users, path: '/teacher/classes' },
       { name: 'Manual Attendance', icon: CheckCircle, path: '/teacher/attendance' },
       { name: 'AI Attendance', icon: Shield, path: '/teacher/ai-attendance' },
-      { name: 'Marks Entry', icon: Award, path: '/teacher/marks-entry' },
+      { name: 'Marks Hub', icon: Award, path: '/teacher/marks-entry' },
       { name: 'Leave Requests', icon: MessageSquare, path: '/teacher/leave-requests' },
       { name: 'Complaints', icon: FileText, path: '/teacher/complaints' },
       { name: 'Calendar', icon: Calendar, path: '/teacher/calendar' },

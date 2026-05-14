@@ -1,8 +1,81 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BookOpen, Plus, Trash2, Users } from 'lucide-react';
+import { ArrowLeft, BookOpen, Plus, Trash2, Upload, Users } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useClassStore } from '../../store/useClassStore';
 import { fetchTeacherMarkScopes, type TeacherMarkScope } from '../../services/marks';
+import type { IStudent } from '../../types/school';
+
+const parseBulkStudentLine = (line: string) => {
+  const cells: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const nextChar = line[index + 1];
+
+    if (char === '"' && nextChar === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (!inQuotes && (char === ',' || char === '\t')) {
+      cells.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  cells.push(current.trim());
+  return cells;
+};
+
+const normalizeBulkGender = (value: string): IStudent['gender'] => {
+  const gender = value.trim().toLowerCase();
+  if (gender === 'female' || gender === 'f') return 'Female';
+  if (gender === 'other' || gender === 'o') return 'Other';
+  return 'Male';
+};
+
+const parseBulkStudents = (
+  input: string,
+  categoryId: string,
+  sectionId: string
+): Array<Omit<IStudent, 'id'>> => {
+  const lines = input
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const dataLines = lines.filter((line, index) => {
+    if (index !== 0) return true;
+    const [nameHeader, emailHeader] = parseBulkStudentLine(line).map((cell) => cell.toLowerCase());
+    return !(nameHeader === 'name' && emailHeader === 'email');
+  });
+
+  return dataLines.map((line, index) => {
+    const [name, email, rollNo, gender = 'Male', dob, contact, parentName, parentContact, address = 'New Delhi'] = parseBulkStudentLine(line);
+
+    if (!name || !email || !rollNo || !dob || !contact || !parentName || !parentContact) {
+      throw new Error(`Line ${index + 1} is missing required data.`);
+    }
+
+    return {
+      name,
+      email: email.toLowerCase(),
+      rollNo,
+      categoryId,
+      sectionId,
+      gender: normalizeBulkGender(gender),
+      dob,
+      contact,
+      parentName,
+      parentContact,
+      address,
+    };
+  });
+};
 
 const TeacherClasses = () => {
   const user = useAuthStore((state) => state.user);
@@ -10,11 +83,13 @@ const TeacherClasses = () => {
   const sections = useClassStore((state) => state.sections);
   const students = useClassStore((state) => state.students);
   const addStudent = useClassStore((state) => state.addStudent);
+  const addStudents = useClassStore((state) => state.addStudents);
   const deleteStudent = useClassStore((state) => state.deleteStudent);
   const isLoading = useClassStore((state) => state.isLoading);
 
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showBulkForm, setShowBulkForm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [markScopes, setMarkScopes] = useState<TeacherMarkScope[]>([]);
@@ -88,6 +163,7 @@ const TeacherClasses = () => {
   useEffect(() => {
     if (!canEditActiveSection) {
       setShowForm(false);
+      setShowBulkForm(false);
     }
   }, [canEditActiveSection]);
 
@@ -121,6 +197,30 @@ const TeacherClasses = () => {
       setShowForm(false);
     } catch (saveError: any) {
       setError(saveError?.message || 'Failed to add student.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleBulkAddStudents = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!activeSection || !canEditActiveSection) {
+      setError('You can edit only your own class section.');
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const parsedStudents = parseBulkStudents(String(formData.get('students') || ''), activeSection.categoryId, activeSection.id);
+      await addStudents(parsedStudents);
+      event.currentTarget.reset();
+      setShowBulkForm(false);
+    } catch (saveError: any) {
+      setError(saveError?.message || 'Failed to import students.');
     } finally {
       setIsSaving(false);
     }
@@ -236,21 +336,63 @@ const TeacherClasses = () => {
                       : 'This is a subject-teacher section, so roster edits are locked.'}
                   </p>
                 </div>
-                <button
-                  onClick={() => setShowForm((current) => !current)}
-                  disabled={!canEditActiveSection}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {showForm ? <ArrowLeft size={16} /> : <Plus size={16} />}
-                  {showForm ? 'Close Form' : 'Add Student'}
-                </button>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={() => {
+                      setShowBulkForm((current) => !current);
+                      setShowForm(false);
+                    }}
+                    disabled={!canEditActiveSection}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-emerald-100 bg-white px-5 py-3 text-sm font-bold text-emerald-700 shadow-sm transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {showBulkForm ? <ArrowLeft size={16} /> : <Upload size={16} />}
+                    {showBulkForm ? 'Close Bulk' : 'Bulk Add'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowForm((current) => !current);
+                      setShowBulkForm(false);
+                    }}
+                    disabled={!canEditActiveSection}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {showForm ? <ArrowLeft size={16} /> : <Plus size={16} />}
+                    {showForm ? 'Close Form' : 'Add Student'}
+                  </button>
+                </div>
               </div>
+
+              {showBulkForm && (
+                <form onSubmit={handleBulkAddStudents} className="mt-6 rounded-[2rem] border border-emerald-100 bg-emerald-50/70 p-5">
+                  <div className="rounded-2xl border border-white/70 bg-white px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">Bulk Student Rows</p>
+                    <p className="mt-1 text-xs font-bold text-emerald-950">
+                      name, email, roll no, gender, dob, contact, parent name, parent contact, address
+                    </p>
+                  </div>
+                  <textarea
+                    name="students"
+                    required
+                    rows={8}
+                    placeholder={'Rahul Sharma, rahul@school.edu, 101, Male, 2012-04-18, 9876543210, Amit Sharma, 9876543210, New Delhi\nPriya Singh, priya@school.edu, 102, Female, 2012-07-09, 9876543211, Neha Singh, 9876543211, New Delhi'}
+                    className="mt-4 w-full resize-y rounded-2xl border border-emerald-100 bg-white p-4 font-mono text-sm font-semibold text-slate-900 outline-none focus:border-emerald-300"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Upload size={16} />
+                    {isSaving ? 'Importing...' : 'Import Students'}
+                  </button>
+                </form>
+              )}
 
               {showForm && (
                 <form onSubmit={handleAddStudent} className="mt-6 grid grid-cols-1 gap-4 rounded-[2rem] border border-slate-100 bg-slate-50 p-5 md:grid-cols-2 xl:grid-cols-3">
                   <input name="name" required placeholder="Student name" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-emerald-300" />
                   <input name="rollNo" required placeholder="Roll number" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-emerald-300" />
-                  <input name="email" placeholder="Email (optional)" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-emerald-300" />
+                  <input name="email" type="email" required placeholder="Student login email" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-emerald-300" />
                   <select name="gender" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-emerald-300">
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>

@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Baby, BookOpen, GraduationCap, Building2,
     Plus, Trash2, ChevronRight, ArrowLeft,
     User, Shield, Users, Phone, Award,
     Briefcase, X, CheckCircle2, UserCheck,
-    Calendar, AlertTriangle, MapPin, Hash
+    Calendar, AlertTriangle, MapPin, Hash, Upload
 } from 'lucide-react';
 import { useClassStore } from '../../store/useClassStore';
+import type { IStudent } from '../../types/school';
 
 // ─── Shared Mini Components ────────────────────────────────────
 const IconBtn = ({ icon: Icon, onClick, variant = 'gray' }: any) => {
@@ -39,6 +40,78 @@ const Toast = ({ msg, onClose }: { msg: string; onClose: () => void }) => (
 );
 
 // ─── Main Dashboard ────────────────────────────────────────────
+const parseBulkStudentLine = (line: string) => {
+    const cells: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+        const nextChar = line[index + 1];
+
+        if (char === '"' && nextChar === '"') {
+            current += '"';
+            index += 1;
+        } else if (char === '"') {
+            inQuotes = !inQuotes;
+        } else if (!inQuotes && (char === ',' || char === '\t')) {
+            cells.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+
+    cells.push(current.trim());
+    return cells;
+};
+
+const normalizeBulkGender = (value: string): IStudent['gender'] => {
+    const gender = value.trim().toLowerCase();
+    if (gender === 'female' || gender === 'f') return 'Female';
+    if (gender === 'other' || gender === 'o') return 'Other';
+    return 'Male';
+};
+
+const parseBulkStudents = (
+    input: string,
+    categoryId: string,
+    sectionId: string
+): Array<Omit<IStudent, 'id'>> => {
+    const lines = input
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    const dataLines = lines.filter((line, index) => {
+        if (index !== 0) return true;
+        const [nameHeader, emailHeader] = parseBulkStudentLine(line).map((cell) => cell.toLowerCase());
+        return !(nameHeader === 'name' && emailHeader === 'email');
+    });
+
+    return dataLines.map((line, index) => {
+        const [name, email, rollNo, gender = 'Male', dob, contact, parentName, parentContact, address = 'New Delhi'] = parseBulkStudentLine(line);
+
+        if (!name || !email || !rollNo || !dob || !contact || !parentName || !parentContact) {
+            throw new Error(`Line ${index + 1} is missing required data.`);
+        }
+
+        return {
+            name,
+            email: email.toLowerCase(),
+            rollNo,
+            categoryId,
+            sectionId,
+            gender: normalizeBulkGender(gender),
+            dob,
+            contact,
+            parentName,
+            parentContact,
+            address,
+        };
+    });
+};
+
 export default function ClassesDashboard() {
     const store = useClassStore();
     const initialize = useClassStore((state) => state.initialize);
@@ -50,13 +123,24 @@ export default function ClassesDashboard() {
     const [showModal, setShowModal] = useState<any>(null); // { type: 'SECTION' | 'TEACHER' | 'STUDENT' }
     const [confirmDelete, setConfirmDelete] = useState<any>(null); // { type, id, name }
     const [toast, setToast] = useState<string | null>(null);
+    const [selectedGroupId, setSelectedGroupId] = useState<string>('');
 
     const activeClass = store.categories.find(c => c.id === activeCategoryID);
     const activeSection = store.sections.find(s => s.id === activeSectionID);
+    const selectedCurriculumGroup = useMemo(
+        () => store.curriculumGroups.find((group) => group.id === selectedGroupId) || store.curriculumGroups[0] || null,
+        [selectedGroupId, store.curriculumGroups]
+    );
 
     useEffect(() => {
         void initialize();
     }, [initialize]);
+
+    useEffect(() => {
+        if (!selectedGroupId && store.curriculumGroups.length) {
+            setSelectedGroupId(store.curriculumGroups[0].id);
+        }
+    }, [selectedGroupId, store.curriculumGroups]);
 
     const notify = (msg: string) => {
         setToast(msg);
@@ -77,31 +161,42 @@ export default function ClassesDashboard() {
         const fd = new FormData(e.currentTarget);
         const get = (k: string) => fd.get(k) as string;
 
-        if (showModal?.type === 'SECTION') {
-            await store.addSection({
-                name: get('name'), categoryId: activeCategoryID!,
-                classTeacher: get('teacher'), strength: parseInt(get('strength')) || 20,
-                roomNumber: get('room') || undefined,
-            });
-            notify('Section added successfully.');
-        } else if (showModal?.type === 'TEACHER') {
-            await store.addTeacher({
-                name: get('name'), subject: get('subject'), category: activeCategoryID!,
-                qualification: get('qual'), experience: get('exp'),
-                contact: get('phone'), email: `${get('name').toLowerCase().replace(/\s+/g, '.')}@school.edu`, assignedClass: activeClass?.name || '',
-                standards: activeClass?.name ? [activeClass.name] : [],
-            });
-            notify('Teacher registered successfully.');
-        } else if (showModal?.type === 'STUDENT') {
-            await store.addStudent({
-                name: get('name'), rollNo: get('roll'), categoryId: activeCategoryID!,
-                sectionId: activeSectionID!, gender: get('gender') as any,
-                dob: get('dob'), contact: get('phone'),
-                parentName: get('parent'), parentContact: get('phone'), address: 'New Delhi',
-                email: `${get('name').toLowerCase().replace(/\s+/g, '.')}@school.edu`,
-            });
-            notify('Student admitted successfully.');
+        try {
+            if (showModal?.type === 'SECTION') {
+                await store.addSection({
+                    name: get('name'), categoryId: activeCategoryID!,
+                    classTeacher: get('teacher'), strength: parseInt(get('strength')) || 20,
+                    roomNumber: get('room') || undefined,
+                });
+                notify('Section added successfully.');
+            } else if (showModal?.type === 'TEACHER') {
+                await store.addTeacher({
+                    name: get('name'), subject: get('subject'), category: activeCategoryID!,
+                    qualification: get('qual'), experience: get('exp'),
+                    contact: get('phone'), email: `${get('name').toLowerCase().replace(/\s+/g, '.')}@school.edu`, assignedClass: activeClass?.name || '',
+                    standards: activeClass?.name ? [activeClass.name] : [],
+                });
+                notify('Teacher registered successfully.');
+            } else if (showModal?.type === 'STUDENT') {
+                const studentEmail = get('email').trim().toLowerCase();
+                await store.addStudent({
+                    name: get('name'), rollNo: get('roll'), categoryId: activeCategoryID!,
+                    sectionId: activeSectionID!, gender: get('gender') as any,
+                    dob: get('dob'), contact: get('phone'),
+                    parentName: get('parent'), parentContact: get('phone'), address: 'New Delhi',
+                    email: studentEmail,
+                });
+                notify(`Student admitted. Login: ${studentEmail} / Student@123`);
+            } else if (showModal?.type === 'BULK_STUDENTS') {
+                const bulkStudents = parseBulkStudents(get('students'), activeCategoryID!, activeSectionID!);
+                await store.addStudents(bulkStudents);
+                notify(`${bulkStudents.length} students imported. Logins use Student@123.`);
+            }
+        } catch (error: any) {
+            notify(error?.message || 'Registration failed.');
+            return;
         }
+
         setShowModal(null);
     };
 
@@ -115,6 +210,66 @@ export default function ClassesDashboard() {
                         <Shield size={14} className="text-teal-500" /> {store.sections.length} Active Sections · {store.teachers.length} Faculty Members
                     </p>
                 </header>
+
+                <section className="mb-10 rounded-[32px] border border-slate-100 bg-white p-8 shadow-sm">
+                    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="max-w-2xl">
+                            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-teal-500">Class Subject Groups</p>
+                            <h2 className="mt-3 text-2xl font-black text-slate-900">Subjects are now managed from curriculum groups, not teacher assignments.</h2>
+                            <p className="mt-2 text-sm font-medium text-slate-500">Pick a group to see the sections covered by that group and the exact subject list those classes should carry.</p>
+                        </div>
+                        <div className="w-full max-w-sm">
+                            <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Select Group</label>
+                            <select
+                                value={selectedCurriculumGroup?.id || ''}
+                                onChange={(event) => setSelectedGroupId(event.target.value)}
+                                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 outline-none transition-all focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                            >
+                                {store.curriculumGroups.map((group) => (
+                                    <option key={group.id} value={group.id}>{group.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {selectedCurriculumGroup && (
+                        <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,1fr)]">
+                            <div>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <h3 className="text-xl font-black text-slate-900">{selectedCurriculumGroup.name}</h3>
+                                    <span className="rounded-full bg-teal-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-teal-600">
+                                        {selectedCurriculumGroup.sectionNames.length} Sections
+                                    </span>
+                                </div>
+                                <p className="mt-2 text-sm font-medium text-slate-500">{selectedCurriculumGroup.description}</p>
+                                <div className="mt-5 flex flex-wrap gap-2">
+                                    {selectedCurriculumGroup.sectionNames.map((sectionName) => (
+                                        <span key={sectionName} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+                                            {sectionName}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="rounded-3xl border border-slate-100 bg-slate-50 p-6">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Group Subjects</p>
+                                <div className="mt-4 space-y-3">
+                                    {selectedCurriculumGroup.subjects.map((subject) => (
+                                        <div key={`${selectedCurriculumGroup.id}:${subject.name}`} className="flex items-center justify-between rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
+                                            <div>
+                                                <p className="text-sm font-black text-slate-900">{subject.name}</p>
+                                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">{subject.code}</p>
+                                            </div>
+                                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                                #{subject.sortOrder + 1}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </section>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     {store.categories.map((cat: any) => {
@@ -284,12 +439,20 @@ export default function ClassesDashboard() {
                     <button onClick={() => setView('CATEGORY')} className="flex items-center gap-2 text-slate-400 font-bold hover:text-slate-900 transition-colors">
                         <ArrowLeft size={20} /> Back to {activeClass?.name}
                     </button>
-                    <button
-                        onClick={() => setShowModal({ type: 'STUDENT' })}
-                        className="px-6 py-3 bg-teal-600 text-white rounded-xl font-bold shadow-lg shadow-teal-100 hover:bg-teal-700 transition-all flex items-center gap-2"
-                    >
-                        <Plus size={20} /> Add Student
-                    </button>
+                    <div className="flex flex-wrap items-center justify-end gap-3">
+                        <button
+                            onClick={() => setShowModal({ type: 'BULK_STUDENTS' })}
+                            className="px-5 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold shadow-sm hover:border-teal-300 hover:text-teal-700 transition-all flex items-center gap-2"
+                        >
+                            <Upload size={18} /> Bulk Add
+                        </button>
+                        <button
+                            onClick={() => setShowModal({ type: 'STUDENT' })}
+                            className="px-6 py-3 bg-teal-600 text-white rounded-xl font-bold shadow-lg shadow-teal-100 hover:bg-teal-700 transition-all flex items-center gap-2"
+                        >
+                            <Plus size={20} /> Add Student
+                        </button>
+                    </div>
                 </div>
 
                 {/* Section Header */}
@@ -508,10 +671,10 @@ function AddModal({ onClose, onSubmit, type }: { onClose: () => void; onSubmit: 
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 backdrop-blur-md bg-slate-900/10">
             <motion.div
                 initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-                className="bg-white rounded-[40px] shadow-2xl w-full max-w-md p-10"
+                className={`bg-white rounded-[40px] shadow-2xl w-full p-10 ${type === 'BULK_STUDENTS' ? 'max-w-3xl' : 'max-w-md'}`}
             >
                 <div className="flex justify-between items-center mb-8">
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">Add <span className="text-slate-300">{type}</span></h2>
+                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">Add <span className="text-slate-300">{type === 'BULK_STUDENTS' ? 'STUDENTS' : type}</span></h2>
                     <button onClick={onClose} className="p-2.5 bg-slate-50 rounded-xl text-slate-400 hover:bg-slate-100">
                         <X size={20} />
                     </button>
@@ -544,6 +707,7 @@ function AddModal({ onClose, onSubmit, type }: { onClose: () => void; onSubmit: 
                     {type === 'STUDENT' && (
                         <>
                             <input name="name" required placeholder="Student Full Name" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none" />
+                            <input name="email" type="email" required placeholder="Student Login Email" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none" />
                             <div className="grid grid-cols-2 gap-3">
                                 <input name="roll" required placeholder="Roll Number" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none" />
                                 <select name="gender" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none">
@@ -557,8 +721,25 @@ function AddModal({ onClose, onSubmit, type }: { onClose: () => void; onSubmit: 
                             <input name="phone" required placeholder="Contact Number" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none" />
                         </>
                     )}
+                    {type === 'BULK_STUDENTS' && (
+                        <div className="space-y-4">
+                            <div className="rounded-2xl border border-teal-100 bg-teal-50 px-4 py-3">
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-teal-700">CSV or spreadsheet rows</p>
+                                <p className="mt-1 text-xs font-bold text-teal-900">
+                                    name, email, roll no, gender, dob, contact, parent name, parent contact, address
+                                </p>
+                            </div>
+                            <textarea
+                                name="students"
+                                required
+                                rows={10}
+                                placeholder={'Rahul Sharma, rahul@school.edu, 101, Male, 2012-04-18, 9876543210, Amit Sharma, 9876543210, New Delhi\nPriya Singh, priya@school.edu, 102, Female, 2012-07-09, 9876543211, Neha Singh, 9876543211, New Delhi'}
+                                className="w-full resize-y rounded-2xl border border-slate-100 bg-slate-50 p-4 font-mono text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-teal-500"
+                            />
+                        </div>
+                    )}
                     <button type="submit" className="w-full py-5 bg-teal-600 text-white rounded-[20px] font-black text-sm shadow-xl shadow-teal-500/20 hover:bg-teal-700 transition-all uppercase tracking-widest mt-2">
-                        Confirm Registration
+                        {type === 'BULK_STUDENTS' ? 'Import Students' : 'Confirm Registration'}
                     </button>
                 </form>
             </motion.div>

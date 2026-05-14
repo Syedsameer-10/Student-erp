@@ -35,6 +35,53 @@ export interface TeacherMarkScope {
   subject: string;
 }
 
+export interface TeacherStudentSubjectPerformance {
+  subject: string;
+  markId?: string;
+  marks?: number;
+  maxMarks: number;
+  highestMarks?: number;
+  canEdit: boolean;
+}
+
+export interface TeacherStudentPerformanceRow {
+  studentId: string;
+  studentName: string;
+  rollNo: string;
+  className: string;
+  sectionId: string;
+  subjects: TeacherStudentSubjectPerformance[];
+  completedSubjects: number;
+  totalSubjects: number;
+}
+
+export interface StudentExamMarkCell {
+  markId?: string;
+  marks?: number;
+  maxMarks: number;
+  highestMarks?: number;
+}
+
+export interface StudentSubjectMarksOverview {
+  subject: string;
+  exams: Record<ExamType, StudentExamMarkCell>;
+  completedExams: number;
+}
+
+export interface StudentMarksOverview {
+  studentId: string;
+  studentName: string;
+  className: string;
+  sectionId: string;
+  subjects: StudentSubjectMarksOverview[];
+  examHighs: Array<{
+    examType: ExamType;
+    highestMarks: number | null;
+    completedSubjects: number;
+    totalSubjects: number;
+  }>;
+}
+
 const assertSupabase = () => {
   if (!supabase) {
     throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env file.');
@@ -79,7 +126,7 @@ export const fetchTeacherMarkScopes = async (teacherProfileId: string): Promise<
       .order('subject', { ascending: true }),
     client
       .from('teachers')
-      .select('home_section_id, subject, subjects, home_section:sections!teachers_home_section_id_fkey(name)')
+      .select('home_section_id, home_section_subject, home_section:sections!teachers_home_section_id_fkey(name)')
       .eq('profile_id', teacherProfileId)
       .maybeSingle(),
   ]);
@@ -103,7 +150,7 @@ export const fetchTeacherMarkScopes = async (teacherProfileId: string): Promise<
 
   const teacherRow: any = teacherRes.data;
   const homeSection = teacherRow?.home_section ? (Array.isArray(teacherRow.home_section) ? teacherRow.home_section[0] : teacherRow.home_section) : null;
-  const ownSubjects = teacherRow?.subject ? [teacherRow.subject] : [];
+  const ownSubjects = teacherRow?.home_section_subject ? [teacherRow.home_section_subject] : [];
   const ownClassScopes = homeSection?.name && teacherRow?.home_section_id
     ? ownSubjects.map((subject: string) => ({
         className: homeSection.name as string,
@@ -190,6 +237,116 @@ export const upsertStudentMark = async (row: {
   }
 };
 
+export const fetchTeacherStudentPerformance = async (
+  teacherProfileId: string,
+  examType: ExamType
+): Promise<TeacherStudentPerformanceRow[]> => {
+  const client = assertSupabase();
+  const [scopes, teacherRes] = await Promise.all([
+    fetchTeacherMarkScopes(teacherProfileId),
+    client
+      .from('teachers')
+      .select('home_section_id')
+      .eq('profile_id', teacherProfileId)
+      .maybeSingle(),
+  ]);
+
+  if (teacherRes.error) {
+    throw teacherRes.error;
+  }
+
+  const homeSectionId = (teacherRes.data as any)?.home_section_id as string | undefined;
+  const sectionIds = Array.from(new Set([
+    ...scopes.map((scope) => scope.sectionId).filter(Boolean),
+    homeSectionId,
+  ].filter(Boolean) as string[]));
+
+  if (!sectionIds.length) {
+    return [];
+  }
+
+  const [studentsRes, sectionSubjectsRes, marksRes] = await Promise.all([
+    client
+      .from('students')
+      .select('id, name, roll_no, section_id, sections!inner(name)')
+      .in('section_id', sectionIds)
+      .order('roll_no', { ascending: true }),
+    client
+      .from('section_subjects')
+      .select('section_id, subject_name, sort_order')
+      .in('section_id', sectionIds)
+      .order('sort_order', { ascending: true }),
+    client
+      .from('student_marks')
+      .select('id, student_id, student_name, class_name, section_id, subject_name, marks, max_marks, exam_type, teacher_profile_id')
+      .in('section_id', sectionIds)
+      .eq('exam_type', examType),
+  ]);
+
+  if (studentsRes.error) {
+    throw studentsRes.error;
+  }
+
+  if (sectionSubjectsRes.error) {
+    throw sectionSubjectsRes.error;
+  }
+
+  if (marksRes.error) {
+    throw marksRes.error;
+  }
+
+  const subjectsBySection = new Map<string, string[]>();
+  (sectionSubjectsRes.data || []).forEach((row: any) => {
+    const current = subjectsBySection.get(row.section_id) || [];
+    current.push(row.subject_name as string);
+    subjectsBySection.set(row.section_id, current);
+  });
+
+  const markMap = new Map<string, any>();
+  const highestBySectionSubject = new Map<string, number>();
+  (marksRes.data || []).forEach((mark: any) => {
+    markMap.set(`${mark.student_id}:${String(mark.subject_name).toLowerCase()}`, mark);
+    const key = `${mark.section_id}:${String(mark.subject_name).toLowerCase()}`;
+    const current = highestBySectionSubject.get(key);
+    if (typeof mark.marks === 'number' && (typeof current !== 'number' || mark.marks > current)) {
+      highestBySectionSubject.set(key, mark.marks);
+    }
+  });
+
+  const editableScopeSet = new Set(scopes.map((scope) => `${scope.sectionId}:${scope.subject.toLowerCase()}`));
+  const subjectVisibleScopeSet = new Set(scopes.map((scope) => `${scope.sectionId}:${scope.subject.toLowerCase()}`));
+
+  return (studentsRes.data || []).map((student: any) => {
+    const section = Array.isArray(student.sections) ? student.sections[0] : student.sections;
+    const subjectRows = (subjectsBySection.get(student.section_id) || []).filter((subject) =>
+      student.section_id === homeSectionId ||
+      subjectVisibleScopeSet.has(`${student.section_id}:${subject.toLowerCase()}`)
+    ).map((subject) => {
+      const mark = markMap.get(`${student.id}:${subject.toLowerCase()}`);
+      return {
+        subject,
+        markId: mark?.id,
+        marks: mark?.marks,
+        maxMarks: mark?.max_marks || 100,
+        highestMarks: highestBySectionSubject.get(`${student.section_id}:${subject.toLowerCase()}`),
+        canEdit: editableScopeSet.has(`${student.section_id}:${subject.toLowerCase()}`),
+      };
+    });
+    const completedMarks = subjectRows.filter((subject) => typeof subject.marks === 'number');
+
+    return {
+      studentId: student.id,
+      studentName: student.name,
+      rollNo: student.roll_no,
+      sectionId: student.section_id,
+      className: section?.name || '',
+      subjects: subjectRows,
+      completedSubjects: completedMarks.length,
+      totalSubjects: subjectRows.length,
+    };
+  });
+};
+
 export const fetchStudentMarksByProfile = async (profileId: string, examType?: ExamType) => {
   const student = await fetchStudentByProfile(profileId);
   if (!student) {
@@ -240,6 +397,122 @@ export const fetchStudentMarksByProfile = async (profileId: string, examType?: E
     examType: row.exam_type,
     teacherProfileId: row.teacher_profile_id,
   })) as StudentMarkRecord[];
+};
+
+const createEmptyExamRecord = (): Record<ExamType, StudentExamMarkCell> => ({
+  Quarterly: { maxMarks: 100 },
+  'Half Yearly': { maxMarks: 100 },
+  Annual: { maxMarks: 100 },
+});
+
+export const fetchStudentMarksOverview = async (profileId: string): Promise<StudentMarksOverview | null> => {
+  const student = await fetchStudentByProfile(profileId);
+  if (!student) {
+    return null;
+  }
+
+  const client = assertSupabase();
+  const [sectionRes, { data: sectionSubjects, error: sectionSubjectsError }, ownMarksRes, highsRes] = await Promise.all([
+    client
+      .from('sections')
+      .select('name')
+      .eq('id', student.sectionId)
+      .maybeSingle(),
+    client
+      .from('section_subjects')
+      .select('subject_name, sort_order')
+      .eq('section_id', student.sectionId)
+      .order('sort_order', { ascending: true }),
+    client
+      .from('student_marks')
+      .select('id, student_id, subject_name, marks, max_marks, exam_type')
+      .eq('student_id', student.id)
+      .order('subject_name', { ascending: true }),
+    client.rpc('get_section_subject_exam_highs', { target_section_id: student.sectionId }),
+  ]);
+
+  if (sectionSubjectsError) {
+    throw sectionSubjectsError;
+  }
+
+  if (sectionRes.error) {
+    throw sectionRes.error;
+  }
+
+  const { data: marks, error: marksError } = ownMarksRes;
+  if (marksError) {
+    throw marksError;
+  }
+
+  if (highsRes.error) {
+    throw highsRes.error;
+  }
+
+  const markMap = new Map<string, any>();
+  const highestMap = new Map<string, number>();
+  (marks || []).forEach((mark: any) => {
+    const key = `${String(mark.subject_name).toLowerCase()}:${mark.exam_type}`;
+    markMap.set(key, mark);
+  });
+
+  (highsRes.data || []).forEach((row: any) => {
+    const key = `${String(row.subject_name).toLowerCase()}:${row.exam_type}`;
+    if (typeof row.highest_marks === 'number') {
+      highestMap.set(key, row.highest_marks);
+    }
+  });
+
+  const subjects = (sectionSubjects || []).map((row: any) => {
+    const subject = row.subject_name as string;
+    const exams = createEmptyExamRecord();
+    MARK_EXAMS.forEach((examType) => {
+      const mark = markMap.get(`${subject.toLowerCase()}:${examType}`);
+      if (mark) {
+        exams[examType] = {
+          markId: mark.id,
+          marks: mark.marks,
+          maxMarks: mark.max_marks || 100,
+          highestMarks: highestMap.get(`${subject.toLowerCase()}:${examType}`),
+        };
+      } else {
+        exams[examType] = {
+          ...exams[examType],
+          highestMarks: highestMap.get(`${subject.toLowerCase()}:${examType}`),
+        };
+      }
+    });
+    const completedCells = MARK_EXAMS
+      .map((examType) => exams[examType])
+      .filter((cell) => typeof cell.marks === 'number');
+
+    return {
+      subject,
+      exams,
+      completedExams: completedCells.length,
+    };
+  });
+
+  const examHighs = MARK_EXAMS.map((examType) => {
+    const examCells = subjects
+      .map((subject) => subject.exams[examType])
+      .filter((cell) => typeof cell.highestMarks === 'number');
+
+    return {
+      examType,
+      highestMarks: examCells.length ? Math.max(...examCells.map((cell) => cell.highestMarks || 0)) : null,
+      completedSubjects: examCells.length,
+      totalSubjects: subjects.length,
+    };
+  });
+
+  return {
+    studentId: student.id,
+    studentName: student.name,
+    className: (sectionRes.data as any)?.name || '',
+    sectionId: student.sectionId,
+    subjects,
+    examHighs,
+  };
 };
 
 export const fetchInstitutionMarks = async (filters?: { className?: string; examType?: ExamType | 'All'; search?: string }) => {
