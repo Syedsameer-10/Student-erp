@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useClassStore } from '../../store/useClassStore';
 import type { IStudent } from '../../types/school';
+import { getTodayInputDate } from '../../utils/dateLimits';
 
 // ─── Shared Mini Components ────────────────────────────────────
 const IconBtn = ({ icon: Icon, onClick, variant = 'gray' }: any) => {
@@ -667,6 +668,8 @@ export default function ClassesDashboard() {
 
 // ─── Add Modal ─────────────────────────────────────────────────
 function AddModal({ onClose, onSubmit, type }: { onClose: () => void; onSubmit: any; type: string }) {
+    const maxDob = getTodayInputDate();
+
     return (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 backdrop-blur-md bg-slate-900/10">
             <motion.div
@@ -716,7 +719,7 @@ function AddModal({ onClose, onSubmit, type }: { onClose: () => void; onSubmit: 
                                     <option value="Other">Other</option>
                                 </select>
                             </div>
-                            <input name="dob" type="date" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none" />
+                            <input name="dob" type="date" max={maxDob} required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none" />
                             <input name="parent" required placeholder="Parent / Guardian Name" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none" />
                             <input name="phone" required placeholder="Contact Number" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none" />
                         </>
@@ -749,22 +752,45 @@ function AddModal({ onClose, onSubmit, type }: { onClose: () => void; onSubmit: 
 
 // ─── Delete Confirm ────────────────────────────────────────────
 function DeleteConfirm({ item, onCancel, onConfirm }: { item: any; onCancel: () => void; onConfirm: () => void }) {
+    const [isFinalTeacherStep, setIsFinalTeacherStep] = useState(false);
+    const isTeacherDelete = item.type === 'TEACHER';
+
     return (
-        <div className="fixed inset-0 z-[160] flex items-center justify-center p-6 backdrop-blur-md bg-rose-900/10">
+        <div className={`fixed inset-0 z-[160] flex items-center justify-center p-6 backdrop-blur-md ${isTeacherDelete ? 'bg-sky-100/80' : 'bg-rose-900/10'}`}>
             <motion.div
                 initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                className="bg-white rounded-[40px] shadow-2xl w-full max-w-sm p-12 text-center"
+                className={`bg-white shadow-2xl w-full max-w-sm text-center ${isTeacherDelete ? 'rounded-xl border border-slate-200 px-8 py-7' : 'rounded-[40px] p-12'}`}
             >
-                <div className="w-20 h-20 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-8">
-                    <AlertTriangle size={36} />
+                <div className={`${isTeacherDelete ? 'h-10 w-10 mb-4' : 'w-20 h-20 mb-8'} bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto`}>
+                    <AlertTriangle size={isTeacherDelete ? 22 : 36} />
                 </div>
-                <h3 className="text-3xl font-black text-slate-900 mb-3">Delete Permanently?</h3>
-                <p className="text-slate-500 font-medium mb-10">
-                    You are removing <span className="font-bold text-rose-600">{item.name}</span>. This cannot be undone.
+                <h3 className={`${isTeacherDelete ? 'text-lg' : 'text-3xl'} font-black text-slate-900 mb-3`}>
+                    {isTeacherDelete ? (isFinalTeacherStep ? 'Final confirmation' : 'Are you sure?') : 'Delete Permanently?'}
+                </h3>
+                <p className={`${isTeacherDelete ? 'mx-auto max-w-xs text-sm leading-6' : ''} text-slate-500 font-medium mb-10`}>
+                    {isTeacherDelete
+                        ? isFinalTeacherStep
+                            ? <>Deleting <span className="font-bold text-rose-600">{item.name}</span> will remove this faculty record and its linked staffing references.</>
+                            : 'This action cannot be undone. All values associated with this teacher will be lost.'
+                        : <>You are removing <span className="font-bold text-rose-600">{item.name}</span>. This cannot be undone.</>}
                 </p>
-                <div className="flex gap-4">
-                    <button onClick={onCancel} className="flex-1 py-4 bg-slate-50 text-slate-400 font-black rounded-2xl hover:bg-slate-100">Cancel</button>
-                    <button onClick={onConfirm} className="flex-1 py-4 bg-rose-500 text-white font-black rounded-2xl shadow-xl shadow-rose-200 hover:bg-rose-600">Delete</button>
+                <div className={isTeacherDelete ? 'space-y-3' : 'flex gap-4'}>
+                    {isTeacherDelete ? (
+                        <>
+                            <button
+                                onClick={() => (isFinalTeacherStep ? onConfirm() : setIsFinalTeacherStep(true))}
+                                className="w-full rounded-md bg-rose-600 px-4 py-3 text-sm font-black text-white shadow-sm transition-colors hover:bg-rose-700"
+                            >
+                                {isFinalTeacherStep ? 'Yes, delete teacher' : 'Delete teacher'}
+                            </button>
+                            <button onClick={onCancel} className="w-full rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-600 transition-colors hover:bg-slate-50">Cancel</button>
+                        </>
+                    ) : (
+                        <>
+                            <button onClick={onCancel} className="flex-1 py-4 bg-slate-50 text-slate-400 font-black rounded-2xl hover:bg-slate-100">Cancel</button>
+                            <button onClick={onConfirm} className="flex-1 py-4 bg-rose-500 text-white font-black rounded-2xl shadow-xl shadow-rose-200 hover:bg-rose-600">Delete</button>
+                        </>
+                    )}
                 </div>
             </motion.div>
         </div>

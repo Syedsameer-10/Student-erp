@@ -42,6 +42,7 @@ export interface TeacherStudentSubjectPerformance {
   maxMarks: number;
   highestMarks?: number;
   canEdit: boolean;
+  isLocked: boolean;
 }
 
 export interface TeacherStudentPerformanceRow {
@@ -80,6 +81,14 @@ export interface StudentMarksOverview {
     completedSubjects: number;
     totalSubjects: number;
   }>;
+}
+
+export interface ClassExamMarkLock {
+  id: string;
+  sectionId: string;
+  examType: ExamType;
+  lockedAt: string;
+  lockedBy?: string | null;
 }
 
 const assertSupabase = () => {
@@ -237,6 +246,74 @@ export const upsertStudentMark = async (row: {
   }
 };
 
+export const fetchClassExamMarkLocks = async (filters?: { sectionId?: string; examType?: ExamType | 'All' }) => {
+  const client = assertSupabase();
+  let query = client
+    .from('class_exam_mark_locks')
+    .select('id, section_id, exam_type, locked_at, locked_by')
+    .order('locked_at', { ascending: false });
+
+  if (filters?.sectionId) {
+    query = query.eq('section_id', filters.sectionId);
+  }
+
+  if (filters?.examType && filters.examType !== 'All') {
+    query = query.eq('exam_type', filters.examType);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw error;
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    sectionId: row.section_id,
+    examType: row.exam_type,
+    lockedAt: row.locked_at,
+    lockedBy: row.locked_by,
+  })) as ClassExamMarkLock[];
+};
+
+export const lockClassExamMarks = async (sectionId: string, examType: ExamType, adminProfileId?: string) => {
+  const client = assertSupabase();
+  const { data, error } = await client
+    .from('class_exam_mark_locks')
+    .upsert({
+      section_id: sectionId,
+      exam_type: examType,
+      locked_by: adminProfileId || null,
+      locked_at: new Date().toISOString(),
+    }, { onConflict: 'section_id,exam_type' })
+    .select('id, section_id, exam_type, locked_at, locked_by')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    sectionId: data.section_id,
+    examType: data.exam_type,
+    lockedAt: data.locked_at,
+    lockedBy: data.locked_by,
+  } as ClassExamMarkLock;
+};
+
+export const unlockClassExamMarks = async (sectionId: string, examType: ExamType) => {
+  const client = assertSupabase();
+  const { error } = await client
+    .from('class_exam_mark_locks')
+    .delete()
+    .eq('section_id', sectionId)
+    .eq('exam_type', examType);
+
+  if (error) {
+    throw error;
+  }
+};
+
 export const fetchTeacherStudentPerformance = async (
   teacherProfileId: string,
   examType: ExamType
@@ -265,7 +342,7 @@ export const fetchTeacherStudentPerformance = async (
     return [];
   }
 
-  const [studentsRes, sectionSubjectsRes, marksRes] = await Promise.all([
+  const [studentsRes, sectionSubjectsRes, marksRes, locksRes] = await Promise.all([
     client
       .from('students')
       .select('id, name, roll_no, section_id, sections!inner(name)')
@@ -281,6 +358,11 @@ export const fetchTeacherStudentPerformance = async (
       .select('id, student_id, student_name, class_name, section_id, subject_name, marks, max_marks, exam_type, teacher_profile_id')
       .in('section_id', sectionIds)
       .eq('exam_type', examType),
+    client
+      .from('class_exam_mark_locks')
+      .select('section_id, exam_type')
+      .in('section_id', sectionIds)
+      .eq('exam_type', examType),
   ]);
 
   if (studentsRes.error) {
@@ -293,6 +375,10 @@ export const fetchTeacherStudentPerformance = async (
 
   if (marksRes.error) {
     throw marksRes.error;
+  }
+
+  if (locksRes.error) {
+    throw locksRes.error;
   }
 
   const subjectsBySection = new Map<string, string[]>();
@@ -315,6 +401,7 @@ export const fetchTeacherStudentPerformance = async (
 
   const editableScopeSet = new Set(scopes.map((scope) => `${scope.sectionId}:${scope.subject.toLowerCase()}`));
   const subjectVisibleScopeSet = new Set(scopes.map((scope) => `${scope.sectionId}:${scope.subject.toLowerCase()}`));
+  const lockedSectionSet = new Set((locksRes.data || []).map((row: any) => `${row.section_id}:${row.exam_type}`));
 
   return (studentsRes.data || []).map((student: any) => {
     const section = Array.isArray(student.sections) ? student.sections[0] : student.sections;
@@ -323,13 +410,15 @@ export const fetchTeacherStudentPerformance = async (
       subjectVisibleScopeSet.has(`${student.section_id}:${subject.toLowerCase()}`)
     ).map((subject) => {
       const mark = markMap.get(`${student.id}:${subject.toLowerCase()}`);
+      const isLocked = lockedSectionSet.has(`${student.section_id}:${examType}`);
       return {
         subject,
         markId: mark?.id,
         marks: mark?.marks,
         maxMarks: mark?.max_marks || 100,
         highestMarks: highestBySectionSubject.get(`${student.section_id}:${subject.toLowerCase()}`),
-        canEdit: editableScopeSet.has(`${student.section_id}:${subject.toLowerCase()}`),
+        canEdit: !isLocked && editableScopeSet.has(`${student.section_id}:${subject.toLowerCase()}`),
+        isLocked,
       };
     });
     const completedMarks = subjectRows.filter((subject) => typeof subject.marks === 'number');

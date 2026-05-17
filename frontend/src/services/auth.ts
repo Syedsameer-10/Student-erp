@@ -248,6 +248,38 @@ export const loginWithSupabase = async (email: string, password: string): Promis
   return getSessionProfile(data.session);
 };
 
+export const changeCurrentUserPassword = async (email: string, currentPassword: string, newPassword: string) => {
+  const client = assertSupabase();
+  const trimmedEmail = email.trim();
+
+  if (!trimmedEmail) {
+    throw new Error('Email address is missing for this account.');
+  }
+
+  if (newPassword.length < 8) {
+    throw new Error('New password must be at least 8 characters.');
+  }
+
+  if (currentPassword === newPassword) {
+    throw new Error('New password must be different from the current password.');
+  }
+
+  const { error: verifyError } = await client.auth.signInWithPassword({
+    email: trimmedEmail,
+    password: currentPassword,
+  });
+
+  if (verifyError) {
+    throw new Error('Current password is incorrect.');
+  }
+
+  const { error: updateError } = await client.auth.updateUser({ password: newPassword });
+
+  if (updateError) {
+    throw updateError;
+  }
+};
+
 export const logoutFromSupabase = async () => {
   if (!supabase) {
     return;

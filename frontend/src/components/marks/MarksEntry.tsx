@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Award, BookOpen, CheckCircle, Filter, Search, Users } from 'lucide-react';
+import { AlertCircle, Award, BookOpen, CheckCircle, Filter, Lock, Search, Users } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import {
   fetchTeacherStudentPerformance,
@@ -89,6 +89,13 @@ const MarksEntry = () => {
 
   const completedMarks = visibleSubjectMarks.filter((subject) => typeof subject.marks === 'number');
   const editableSubjects = visibleSubjectMarks.filter((subject) => subject.canEdit).length;
+  const lockedClassNames = useMemo(
+    () => Array.from(new Set(rows
+      .filter((row) => row.subjects.some((subject) => subject.isLocked))
+      .map((row) => row.className)
+    )).sort((left, right) => left.localeCompare(right, undefined, { numeric: true })),
+    [rows]
+  );
   const subjectHighestCards = useMemo(() => {
     const cards = new Map<string, { subject: string; highestMarks: number | null; savedMarks: number; totalMarks: number }>();
 
@@ -137,7 +144,7 @@ const MarksEntry = () => {
     }
 
     if (!subject.canEdit) {
-      showNotification('You can edit only the subjects you handle for this class.');
+      showNotification(subject.isLocked ? 'Admin has locked this class exam.' : 'You can edit only the subjects you handle for this class.');
       return;
     }
 
@@ -212,6 +219,13 @@ const MarksEntry = () => {
           </div>
         ))}
       </div>
+
+      {lockedClassNames.length > 0 && (
+        <div className="flex items-center gap-3 rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700">
+          <Lock size={18} />
+          {examType} marks are locked by admin for: {lockedClassNames.join(', ')}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm lg:grid-cols-4">
         <div className="space-y-2">
@@ -331,7 +345,7 @@ const MarksEntry = () => {
                       {student.subjects.map((subject) => (
                         <span
                           key={subject.subject}
-                          className={`rounded-lg px-2.5 py-1 text-[11px] font-bold ${subject.canEdit ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}
+                          className={`rounded-lg px-2.5 py-1 text-[11px] font-bold ${subject.isLocked ? 'bg-rose-50 text-rose-700' : subject.canEdit ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}
                         >
                           {subject.subject}: {typeof subject.marks === 'number' ? subject.marks : '-'}
                         </span>
@@ -367,7 +381,7 @@ const MarksEntry = () => {
                       <div>
                         <p className="font-bold text-slate-900">{subject.subject}</p>
                         <p className={`text-xs font-bold ${subject.canEdit ? 'text-indigo-600' : 'text-slate-400'}`}>
-                          {subject.canEdit ? 'Editable for you' : 'Read only'}
+                          {subject.isLocked ? 'Locked by admin' : subject.canEdit ? 'Editable for you' : 'Read only'}
                         </p>
                       </div>
                       {typeof subject.marks === 'number' ? (

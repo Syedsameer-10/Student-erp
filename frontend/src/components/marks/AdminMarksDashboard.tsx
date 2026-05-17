@@ -1,18 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MARK_EXAMS, fetchInstitutionMarks, type ExamType, type StudentMarkRecord } from '../../services/marks';
+import {
+  MARK_EXAMS,
+  fetchClassExamMarkLocks,
+  fetchInstitutionMarks,
+  lockClassExamMarks,
+  unlockClassExamMarks,
+  type ClassExamMarkLock,
+  type ExamType,
+  type StudentMarkRecord,
+} from '../../services/marks';
 import { useClassStore } from '../../store/useClassStore';
-import { Search, FileText, GraduationCap, ChevronDown } from 'lucide-react';
+import { Search, FileText, GraduationCap, ChevronDown, Lock, Unlock, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useAuthStore } from '../../store/useAuthStore';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const AdminMarksDashboard = () => {
+  const user = useAuthStore((state) => state.user);
   const sections = useClassStore((state) => state.sections);
   const [selectedClass, setSelectedClass] = useState('All');
   const [selectedExam, setSelectedExam] = useState<ExamType | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [marks, setMarks] = useState<StudentMarkRecord[]>([]);
+  const [locks, setLocks] = useState<ClassExamMarkLock[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLockSaving, setIsLockSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lockConfirm, setLockConfirm] = useState<'lock' | 'unlock' | null>(null);
 
   useEffect(() => {
     const loadMarks = async () => {
@@ -40,6 +54,74 @@ const AdminMarksDashboard = () => {
     () => Array.from(new Set(sections.map((section) => section.name))).sort((left, right) => left.localeCompare(right, undefined, { numeric: true })),
     [sections]
   );
+
+  const selectedSection = useMemo(
+    () => sections.find((section) => section.name === selectedClass) || null,
+    [sections, selectedClass]
+  );
+
+  useEffect(() => {
+    const loadLocks = async () => {
+      if (!selectedSection || selectedExam === 'All') {
+        setLocks([]);
+        return;
+      }
+
+      try {
+        const data = await fetchClassExamMarkLocks({
+          sectionId: selectedSection.id,
+          examType: selectedExam,
+        });
+        setLocks(data);
+      } catch (loadError: any) {
+        setError(loadError?.message || 'Failed to load mark lock status.');
+      }
+    };
+
+    void loadLocks();
+  }, [selectedExam, selectedSection]);
+
+  const activeLock = useMemo(
+    () => selectedSection && selectedExam !== 'All'
+      ? locks.find((lock) => lock.sectionId === selectedSection.id && lock.examType === selectedExam) || null
+      : null,
+    [locks, selectedExam, selectedSection]
+  );
+
+  const canManageLock = Boolean(selectedSection && selectedExam !== 'All');
+
+  const refreshLocks = async () => {
+    if (!selectedSection || selectedExam === 'All') {
+      setLocks([]);
+      return;
+    }
+
+    setLocks(await fetchClassExamMarkLocks({ sectionId: selectedSection.id, examType: selectedExam }));
+  };
+
+  const handleLockToggle = async () => {
+    if (!selectedSection || selectedExam === 'All' || !lockConfirm) {
+      return;
+    }
+
+    try {
+      setIsLockSaving(true);
+      setError(null);
+
+      if (lockConfirm === 'lock') {
+        await lockClassExamMarks(selectedSection.id, selectedExam, user?.id);
+      } else {
+        await unlockClassExamMarks(selectedSection.id, selectedExam);
+      }
+
+      await refreshLocks();
+      setLockConfirm(null);
+    } catch (lockError: any) {
+      setError(lockError?.message || 'Unable to update lock status.');
+    } finally {
+      setIsLockSaving(false);
+    }
+  };
 
   const generateReport = () => {
     const doc = new jsPDF();
@@ -123,6 +205,40 @@ const AdminMarksDashboard = () => {
         </div>
       </div>
 
+      <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Class Exam Lock</p>
+            <h3 className="mt-1 text-lg font-black text-slate-900">
+              {canManageLock ? `${selectedClass} - ${selectedExam}` : 'Choose one class and one exam'}
+            </h3>
+            <p className="mt-1 text-sm font-medium text-slate-500">
+              Locking an exam blocks all teachers assigned to this class from changing marks for every subject in that exam.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            {canManageLock && (
+              <span className={`inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-black ${activeLock ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                {activeLock ? <Lock size={16} /> : <Unlock size={16} />}
+                {activeLock ? 'Locked' : 'Open'}
+              </span>
+            )}
+            <button
+              type="button"
+              disabled={!canManageLock}
+              onClick={() => setLockConfirm(activeLock ? 'unlock' : 'lock')}
+              className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-black text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:bg-slate-300 ${
+                activeLock ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
+              }`}
+            >
+              {activeLock ? <Unlock size={16} /> : <Lock size={16} />}
+              {activeLock ? 'Unlock Exam' : 'Lock Exam'}
+            </button>
+          </div>
+        </div>
+      </div>
+
       {error && (
         <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-medium text-rose-700">
           {error}
@@ -186,8 +302,76 @@ const AdminMarksDashboard = () => {
           </tbody>
         </table>
       </div>
+
+      {lockConfirm && selectedSection && selectedExam !== 'All' && (
+        <MarkLockConfirm
+          action={lockConfirm}
+          className={selectedClass}
+          examType={selectedExam}
+          isSaving={isLockSaving}
+          onCancel={() => setLockConfirm(null)}
+          onConfirm={() => void handleLockToggle()}
+        />
+      )}
     </div>
   );
 };
 
 export default AdminMarksDashboard;
+
+function MarkLockConfirm({
+  action,
+  className,
+  examType,
+  isSaving,
+  onCancel,
+  onConfirm,
+}: {
+  action: 'lock' | 'unlock';
+  className: string;
+  examType: ExamType;
+  isSaving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const [isFinalStep, setIsFinalStep] = useState(false);
+  const isLocking = action === 'lock';
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-sky-100/80 p-6 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white px-8 py-7 text-center shadow-2xl">
+        <div className={`mx-auto flex h-10 w-10 items-center justify-center rounded-full ${isLocking ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-600'}`}>
+          {isLocking ? <AlertTriangle size={22} /> : <CheckCircle2 size={22} />}
+        </div>
+        <h3 className="mt-4 text-lg font-black text-slate-900">
+          {isFinalStep ? 'Final confirmation' : isLocking ? 'Lock exam marks?' : 'Unlock exam marks?'}
+        </h3>
+        <p className="mx-auto mt-3 max-w-xs text-sm font-medium leading-6 text-slate-500">
+          {isLocking
+            ? `${className} ${examType} marks will be locked for all subjects. Teachers assigned to this class cannot update marks until admin unlocks it.`
+            : `${className} ${examType} marks will be reopened. Assigned teachers can update their marks again.`}
+        </p>
+        <div className="mt-6 space-y-3">
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={() => (isFinalStep ? onConfirm() : setIsFinalStep(true))}
+            className={`w-full rounded-md px-4 py-3 text-sm font-black text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              isLocking ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'
+            }`}
+          >
+            {isSaving ? 'Saving...' : isFinalStep ? (isLocking ? 'Yes, lock exam' : 'Yes, unlock exam') : (isLocking ? 'Lock exam' : 'Unlock exam')}
+          </button>
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={onCancel}
+            className="w-full rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

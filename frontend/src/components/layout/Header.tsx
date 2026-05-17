@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useAuthStore } from '../../store/useAuthStore';
-import { Bell, Search, Menu, User, Mail, Shield, LogOut, CheckCircle } from 'lucide-react';
+import { Bell, Search, Menu, User, Mail, Shield, LogOut, CheckCircle, KeyRound, Eye, EyeOff } from 'lucide-react';
 import Modal from '../common/Modal';
+import { changeCurrentUserPassword } from '../../services/auth';
 
 export const Header = ({ 
   collapsed, 
@@ -12,7 +13,63 @@ export const Header = ({
 }) => {
   const { user, logout } = useAuthStore();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showPasswordText, setShowPasswordText] = useState(false);
   const teacherSubjects = user?.subjects?.length ? user.subjects.join(', ') : user?.subject;
+
+  const resetPasswordForm = () => {
+    setShowPasswordForm(false);
+    setPasswordForm({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    });
+    setPasswordMessage(null);
+    setIsChangingPassword(false);
+    setShowPasswordText(false);
+  };
+
+  const closeProfile = () => {
+    setIsProfileOpen(false);
+    resetPasswordForm();
+  };
+
+  const handlePasswordChange = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!user?.email) {
+      setPasswordMessage({ type: 'error', text: 'Email address is missing for this account.' });
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordMessage({ type: 'error', text: 'New password and confirmation do not match.' });
+      return;
+    }
+
+    try {
+      setIsChangingPassword(true);
+      setPasswordMessage(null);
+      await changeCurrentUserPassword(user.email, passwordForm.currentPassword, passwordForm.newPassword);
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      setPasswordMessage({ type: 'success', text: 'Password updated. Use the new password for future logins.' });
+    } catch (error: any) {
+      setPasswordMessage({ type: 'error', text: error?.message || 'Unable to change password.' });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   return (
     <>
@@ -56,7 +113,7 @@ export const Header = ({
         </div>
       </header>
 
-      <Modal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} title="My Profile">
+      <Modal isOpen={isProfileOpen} onClose={closeProfile} title="My Profile">
         <div className="space-y-6">
           <div className="flex flex-col items-center gap-3 py-4">
              <div className="w-24 h-24 rounded-full bg-indigo-600 text-white flex items-center justify-center text-3xl font-extrabold shadow-2xl shadow-indigo-200 border-4 border-white">
@@ -104,6 +161,83 @@ export const Header = ({
                    </div>
                 </div>
              )}
+          </div>
+
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-white p-2.5 text-indigo-600 shadow-sm">
+                  <KeyRound size={20} />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-slate-900">Password</p>
+                  <p className="text-xs font-medium text-slate-500">Create a private password for future logins.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPasswordForm((current) => !current);
+                  setPasswordMessage(null);
+                }}
+                className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-indigo-700"
+              >
+                {showPasswordForm ? 'Close' : 'Change Password'}
+              </button>
+            </div>
+
+            {showPasswordForm && (
+              <form onSubmit={handlePasswordChange} className="mt-4 space-y-3 border-t border-indigo-100 pt-4">
+                <div className="grid grid-cols-1 gap-3">
+                  {[
+                    { key: 'currentPassword', label: 'Current Password', autoComplete: 'current-password' },
+                    { key: 'newPassword', label: 'New Password', autoComplete: 'new-password' },
+                    { key: 'confirmPassword', label: 'Confirm New Password', autoComplete: 'new-password' },
+                  ].map((field) => (
+                    <div key={field.key} className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{field.label}</label>
+                      <div className="relative">
+                        <input
+                          type={showPasswordText ? 'text' : 'password'}
+                          autoComplete={field.autoComplete}
+                          value={passwordForm[field.key as keyof typeof passwordForm]}
+                          onChange={(event) => setPasswordForm((current) => ({ ...current, [field.key]: event.target.value }))}
+                          required
+                          minLength={field.key === 'currentPassword' ? undefined : 8}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 pr-11 text-sm font-medium text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswordText((current) => !current)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          aria-label={showPasswordText ? 'Hide passwords' : 'Show passwords'}
+                        >
+                          {showPasswordText ? <EyeOff size={17} /> : <Eye size={17} />}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {passwordMessage && (
+                  <div className={`rounded-xl px-4 py-3 text-sm font-bold ${
+                    passwordMessage.type === 'success'
+                      ? 'border border-emerald-100 bg-emerald-50 text-emerald-700'
+                      : 'border border-rose-100 bg-rose-50 text-rose-700'
+                  }`}>
+                    {passwordMessage.text}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isChangingPassword}
+                  className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {isChangingPassword ? 'Updating...' : 'Update Password'}
+                </button>
+              </form>
+            )}
           </div>
 
            <div className="pt-6 border-t border-slate-100 flex gap-3">

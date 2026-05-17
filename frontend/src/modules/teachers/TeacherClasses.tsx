@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useClassStore } from '../../store/useClassStore';
 import { fetchTeacherMarkScopes, type TeacherMarkScope } from '../../services/marks';
 import type { IStudent } from '../../types/school';
+import { getTodayInputDate } from '../../utils/dateLimits';
 
 const parseBulkStudentLine = (line: string) => {
   const cells: string[] = [];
@@ -93,6 +94,7 @@ const TeacherClasses = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [markScopes, setMarkScopes] = useState<TeacherMarkScope[]>([]);
+  const maxDob = getTodayInputDate();
 
   useEffect(() => {
     void initialize();
@@ -398,7 +400,7 @@ const TeacherClasses = () => {
                     <option value="Female">Female</option>
                     <option value="Other">Other</option>
                   </select>
-                  <input name="dob" type="date" required className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-emerald-300" />
+                  <input name="dob" type="date" max={maxDob} required className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-emerald-300" />
                   <input name="contact" required placeholder="Student contact" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-emerald-300" />
                   <input name="parentName" required placeholder="Parent name" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-emerald-300" />
                   <input name="parentContact" required placeholder="Parent contact" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-emerald-300" />

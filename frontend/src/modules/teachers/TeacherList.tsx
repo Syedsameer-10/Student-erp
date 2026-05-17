@@ -9,7 +9,7 @@ import {
   type SortingState,
   useReactTable,
 } from '@tanstack/react-table';
-import { CheckCircle, Mail, Phone, Plus, Search, Shield, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Mail, Phone, Plus, Search, Shield, Trash2 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 import { useClassStore } from '../../store/useClassStore';
 import type { ITeacher } from '../../types/school';
@@ -17,7 +17,7 @@ import type { TeacherManagementDetails, TeacherSubjectAssignmentDetail } from '.
 
 const columnHelper = createColumnHelper<ITeacher>();
 
-const getColumns = (onManage: (teacher: ITeacher) => void) => [
+const getColumns = (onManage: (teacher: ITeacher) => void, onDelete: (teacher: ITeacher) => void) => [
   columnHelper.accessor('name', {
     header: 'Faculty',
     cell: (info) => (
@@ -74,13 +74,22 @@ const getColumns = (onManage: (teacher: ITeacher) => void) => [
     id: 'actions',
     header: 'Manage',
     cell: (info) => (
-      <button
-        onClick={() => onManage(info.row.original)}
-        className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
-      >
-        <Shield size={14} />
-        Manage
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onManage(info.row.original)}
+          className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
+        >
+          <Shield size={14} />
+          Manage
+        </button>
+        <button
+          onClick={() => onDelete(info.row.original)}
+          className="inline-flex items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700 transition-colors hover:bg-rose-100"
+        >
+          <Trash2 size={14} />
+          Delete
+        </button>
+      </div>
     ),
   }),
 ];
@@ -103,6 +112,7 @@ const TeacherList = () => {
   const teachers = useClassStore((state) => state.teachers);
   const categories = useClassStore((state) => state.categories);
   const addTeacher = useClassStore((state) => state.addTeacher);
+  const deleteTeacher = useClassStore((state) => state.deleteTeacher);
   const fetchTeacherManagementDetails = useClassStore((state) => state.fetchTeacherManagementDetails);
   const updateTeacherRecord = useClassStore((state) => state.updateTeacherRecord);
   const addTeacherSubjectAssignment = useClassStore((state) => state.addTeacherSubjectAssignment);
@@ -119,6 +129,10 @@ const TeacherList = () => {
   const [managementError, setManagementError] = useState<string | null>(null);
   const [teacherForm, setTeacherForm] = useState(emptyTeacherForm);
   const [selectedSubjectAssignment, setSelectedSubjectAssignment] = useState('');
+  const [assignmentClassFilter, setAssignmentClassFilter] = useState('All');
+  const [assignmentSubjectFilter, setAssignmentSubjectFilter] = useState('All');
+  const [deleteCandidate, setDeleteCandidate] = useState<ITeacher | null>(null);
+  const [isDeletingTeacher, setIsDeletingTeacher] = useState(false);
 
   useEffect(() => {
     void initialize();
@@ -126,35 +140,40 @@ const TeacherList = () => {
 
   const table = useReactTable({
     data: teachers,
-    columns: getColumns((teacher) => {
+    columns: getColumns(
+      (teacher) => {
       setManageTeacher(teacher);
       setManagementDetails(null);
       setManagementError(null);
       setSelectedSubjectAssignment('');
+      setAssignmentClassFilter('All');
+      setAssignmentSubjectFilter('All');
       setManagementLoading(true);
-      void fetchTeacherManagementDetails(teacher.id)
-        .then((details) => {
-          setManagementDetails(details);
-          setTeacherForm({
-            name: details.teacher.name,
-            email: details.teacher.email,
-            category: details.teacher.category,
-            subject: details.teacher.subject || '',
-            subjectsText: (details.teacher.subjects?.length ? details.teacher.subjects : [details.teacher.subject]).filter(Boolean).join(', '),
-            qualification: details.teacher.qualification,
-            experience: details.teacher.experience,
-            contact: details.teacher.contact,
-            classTeacherSectionId: details.currentClassTeacherSectionId || '',
-            classTeacherSubject: details.teacher.homeSectionSubject || '',
-          });
-          setSelectedSubjectAssignment(details.availableSubjectAssignments[0]?.label || '');
-        })
-        .catch((error: any) => {
-          console.error(error);
-          setManagementError(error?.message || 'Unable to load faculty management details.');
-        })
-        .finally(() => setManagementLoading(false));
-    }),
+        void fetchTeacherManagementDetails(teacher.id)
+          .then((details) => {
+            setManagementDetails(details);
+            setTeacherForm({
+              name: details.teacher.name,
+              email: details.teacher.email,
+              category: details.teacher.category,
+              subject: details.teacher.subject || '',
+              subjectsText: (details.teacher.subjects?.length ? details.teacher.subjects : [details.teacher.subject]).filter(Boolean).join(', '),
+              qualification: details.teacher.qualification,
+              experience: details.teacher.experience,
+              contact: details.teacher.contact,
+              classTeacherSectionId: details.currentClassTeacherSectionId || '',
+              classTeacherSubject: details.teacher.homeSectionSubject || '',
+            });
+            setSelectedSubjectAssignment(details.availableSubjectAssignments[0]?.label || '');
+          })
+          .catch((error: any) => {
+            console.error(error);
+            setManagementError(error?.message || 'Unable to load faculty management details.');
+          })
+          .finally(() => setManagementLoading(false));
+      },
+      (teacher) => setDeleteCandidate(teacher)
+    ),
     state: {
       sorting,
       globalFilter,
@@ -179,6 +198,8 @@ const TeacherList = () => {
     setManagementLoading(false);
     setTeacherForm(emptyTeacherForm);
     setSelectedSubjectAssignment('');
+    setAssignmentClassFilter('All');
+    setAssignmentSubjectFilter('All');
   };
 
   const reloadManagementDetails = async (teacherId: string) => {
@@ -200,6 +221,8 @@ const TeacherList = () => {
         classTeacherSubject: details.teacher.homeSectionSubject || '',
       });
       setSelectedSubjectAssignment(details.availableSubjectAssignments[0]?.label || '');
+      setAssignmentClassFilter('All');
+      setAssignmentSubjectFilter('All');
     } catch (error: any) {
       console.error(error);
       setManagementError(error?.message || 'Unable to refresh faculty details.');
@@ -314,6 +337,27 @@ const TeacherList = () => {
     }
   };
 
+  const handleDeleteTeacher = async () => {
+    if (!deleteCandidate) {
+      return;
+    }
+
+    try {
+      setIsDeletingTeacher(true);
+      await deleteTeacher(deleteCandidate.id);
+      showToast(`${deleteCandidate.name} was deleted.`);
+      setDeleteCandidate(null);
+      if (manageTeacher?.id === deleteCandidate.id) {
+        closeManagementModal();
+      }
+    } catch (error: any) {
+      console.error(error);
+      showToast(error?.message || 'Unable to delete faculty member.');
+    } finally {
+      setIsDeletingTeacher(false);
+    }
+  };
+
   const staffingSummary = useMemo(() => {
     if (!managementDetails) {
       return null;
@@ -326,6 +370,45 @@ const TeacherList = () => {
         : 'Not assigned',
     };
   }, [managementDetails]);
+
+  const assignmentClassOptions = useMemo(
+    () => Array.from(new Set((managementDetails?.availableSubjectAssignments || []).map((option) => option.className)))
+      .sort((left, right) => left.localeCompare(right, undefined, { numeric: true })),
+    [managementDetails]
+  );
+
+  const assignmentSubjectOptions = useMemo(
+    () => Array.from(new Set((managementDetails?.availableSubjectAssignments || [])
+      .map((option) => option.subject)
+      .filter(Boolean) as string[]
+    )).sort((left, right) => left.localeCompare(right)),
+    [managementDetails]
+  );
+
+  const filteredSubjectAssignments = useMemo(
+    () => (managementDetails?.availableSubjectAssignments || []).filter((option) =>
+      (assignmentClassFilter === 'All' || option.className === assignmentClassFilter) &&
+      (assignmentSubjectFilter === 'All' || option.subject === assignmentSubjectFilter)
+    ),
+    [assignmentClassFilter, assignmentSubjectFilter, managementDetails]
+  );
+
+  useEffect(() => {
+    if (!managementDetails) {
+      return;
+    }
+
+    if (!filteredSubjectAssignments.length) {
+      setSelectedSubjectAssignment('');
+      return;
+    }
+
+    setSelectedSubjectAssignment((current) =>
+      filteredSubjectAssignments.some((option) => option.label === current)
+        ? current
+        : filteredSubjectAssignments[0].label
+    );
+  }, [filteredSubjectAssignments, managementDetails]);
 
   return (
     <div className="space-y-6">
@@ -402,7 +485,7 @@ const TeacherList = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={getColumns(() => undefined).length} className="px-6 py-12 text-center font-medium text-slate-500">
+                  <td colSpan={getColumns(() => undefined, () => undefined).length} className="px-6 py-12 text-center font-medium text-slate-500">
                     No faculty found based on query.
                   </td>
                 </tr>
@@ -613,26 +696,63 @@ const TeacherList = () => {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-                <select
-                  value={selectedSubjectAssignment}
-                  onChange={(event) => setSelectedSubjectAssignment(event.target.value)}
-                  disabled={managementLoading || managementDetails.availableSubjectAssignments.length === 0}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
-                >
-                  {managementDetails.availableSubjectAssignments.length === 0 && <option value="">No empty subject slots available</option>}
-                  {managementDetails.availableSubjectAssignments.map((option) => (
-                    <option key={option.label} value={option.label}>{option.label}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => void handleAddSubjectAssignment()}
-                  disabled={managementLoading || managementDetails.availableSubjectAssignments.length === 0}
-                  className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  Add Subject Slot
-                </button>
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Filter By Class</label>
+                    <select
+                      value={assignmentClassFilter}
+                      onChange={(event) => setAssignmentClassFilter(event.target.value)}
+                      disabled={managementLoading || managementDetails.availableSubjectAssignments.length === 0}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
+                    >
+                      <option value="All">All Classes</option>
+                      {assignmentClassOptions.map((className) => (
+                        <option key={className} value={className}>{className}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Filter By Subject</label>
+                    <select
+                      value={assignmentSubjectFilter}
+                      onChange={(event) => setAssignmentSubjectFilter(event.target.value)}
+                      disabled={managementLoading || managementDetails.availableSubjectAssignments.length === 0}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
+                    >
+                      <option value="All">All Subjects</option>
+                      {assignmentSubjectOptions.map((subject) => (
+                        <option key={subject} value={subject}>{subject}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <select
+                    value={selectedSubjectAssignment}
+                    onChange={(event) => setSelectedSubjectAssignment(event.target.value)}
+                    disabled={managementLoading || filteredSubjectAssignments.length === 0}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
+                  >
+                    {managementDetails.availableSubjectAssignments.length === 0 && <option value="">No empty subject slots available</option>}
+                    {managementDetails.availableSubjectAssignments.length > 0 && filteredSubjectAssignments.length === 0 && <option value="">No slots match these filters</option>}
+                    {filteredSubjectAssignments.map((option) => (
+                      <option key={option.label} value={option.label}>{option.className} - {option.subject}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => void handleAddSubjectAssignment()}
+                    disabled={managementLoading || filteredSubjectAssignments.length === 0}
+                    className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    Add Subject Slot
+                  </button>
+                </div>
+                <p className="mt-3 text-xs font-medium text-slate-500">
+                  Showing {filteredSubjectAssignments.length} of {managementDetails.availableSubjectAssignments.length} free slots.
+                </p>
               </div>
             </div>
           </div>
@@ -640,8 +760,67 @@ const TeacherList = () => {
           <div className="py-10 text-center text-sm font-medium text-slate-500">Unable to load faculty details.</div>
         )}
       </Modal>
+
+      {deleteCandidate && (
+        <TeacherDeleteConfirm
+          teacher={deleteCandidate}
+          isDeleting={isDeletingTeacher}
+          onCancel={() => setDeleteCandidate(null)}
+          onConfirm={() => void handleDeleteTeacher()}
+        />
+      )}
     </div>
   );
 };
 
 export default TeacherList;
+
+function TeacherDeleteConfirm({
+  teacher,
+  isDeleting,
+  onCancel,
+  onConfirm,
+}: {
+  teacher: ITeacher;
+  isDeleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const [isFinalStep, setIsFinalStep] = useState(false);
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-sky-100/80 p-6 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white px-8 py-7 text-center shadow-2xl">
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-rose-50 text-rose-500">
+          <AlertTriangle size={22} />
+        </div>
+        <h3 className="mt-4 text-lg font-black text-slate-900">
+          {isFinalStep ? 'Final confirmation' : 'Are you sure?'}
+        </h3>
+        <p className="mx-auto mt-3 max-w-xs text-sm font-medium leading-6 text-slate-500">
+          {isFinalStep
+            ? `Deleting ${teacher.name} will remove this faculty record and its linked staffing references.`
+            : 'This action cannot be undone. All values associated with this teacher will be lost.'}
+        </p>
+        <div className="mt-6 space-y-3">
+          <button
+            type="button"
+            disabled={isDeleting}
+            onClick={() => (isFinalStep ? onConfirm() : setIsFinalStep(true))}
+            className="w-full rounded-md bg-rose-600 px-4 py-3 text-sm font-black text-white shadow-sm transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
+          >
+            {isDeleting ? 'Deleting...' : isFinalStep ? 'Yes, delete teacher' : 'Delete teacher'}
+          </button>
+          <button
+            type="button"
+            disabled={isDeleting}
+            onClick={onCancel}
+            className="w-full rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

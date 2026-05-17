@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { IClassCategory, IClassSubjectGroup, ISection, ISectionTeacher, IStudent, ITeacher } from '../types/school';
+import { getTodayInputDate, isFutureDateInput } from '../utils/dateLimits';
 
 interface CategoryRow {
   id: string;
@@ -203,6 +204,12 @@ const buildGeneratedStudentEmail = (student: Pick<IStudent, 'name' | 'rollNo'>) 
     .replace(/^\.+|\.+$/g, '');
 
   return `${slug || 'student'}.${String(student.rollNo || 'id').toLowerCase()}@school.edu`;
+};
+
+const assertValidStudentDob = (student: Pick<IStudent, 'name' | 'dob'>) => {
+  if (isFutureDateInput(student.dob)) {
+    throw new Error(`Date of birth for ${student.name || 'student'} cannot be after ${getTodayInputDate()}.`);
+  }
 };
 
 export const fetchSchoolData = async () => {
@@ -800,6 +807,7 @@ export const assignTeacherToFacultySlot = async (
 
 export const createStudentRecord = async (student: Omit<IStudent, 'id'>) => {
   const client = assertSupabase();
+  assertValidStudentDob(student);
   const studentEmail = student.email?.trim() || buildGeneratedStudentEmail(student);
   const { data, error } = await client
     .from('students')
@@ -838,6 +846,7 @@ export const createStudentRecord = async (student: Omit<IStudent, 'id'>) => {
 
 export const createStudentRecords = async (students: Array<Omit<IStudent, 'id'>>) => {
   const client = assertSupabase();
+  students.forEach(assertValidStudentDob);
   const rows = students.map((student) => ({
     profile_id: student.profileId || null,
     name: student.name,
